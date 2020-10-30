@@ -7,7 +7,7 @@ except ModuleNotFoundError:
 from math import log
 import sys
 
-from plot_acr import plot_acr
+from plot_acr import plot_acr_comparison
 
 STAT_COLUMNS = ['mu.minor', 'sigma.minor', 'mu.major', 'sigma.major']
 
@@ -51,7 +51,7 @@ def acr_compare(file_1=None, file_2=None):
     overlap_length = int(bins['length_overlap'].sum())
 
     # plot files with bins marked
-    plot_acr(seg1, seg2, bins, 'REBC Seg File', 'wolF Seg File')
+    plot_acr_comparison(seg1, seg2, bins, ['REBC Seg File', 'wolF Seg File'])
 
     # overlap_scores = np.asarray([b.get_overlap() for b in bins]).flatten()
     # overlap_weights = np.asarray([b.get_weights() for b in bins]).flatten()
@@ -136,7 +136,7 @@ def calc_pdf_intersect(mu1, sigma1, mu2, sigma2):
 
 ####################
 
-def get_union(seg1_df, seg2_df):  # todo either initialize df with large size or create from list
+def get_union(seg1_df, seg2_df):
     full_bins = _union_one_sided(seg1_df, seg2_df)
     bins_2 = _union_one_sided(seg2_df, seg1_df)
 
@@ -144,14 +144,14 @@ def get_union(seg1_df, seg2_df):  # todo either initialize df with large size or
     unique_2_df = bins_2.loc[bins_2['unique'] == True]
 
     # swap stats columns (and 1/2 length columns)
-    l = []
+    column_list = []
     for c in unique_2_df.columns.values:
         if '_1' in c:
             c = c.replace('1', '2')
         else:
             c = c.replace('2', '1')
-        l.append(c)
-    unique_2_df.columns = l
+        column_list.append(c)
+    unique_2_df.columns = column_list
 
     bins = pd.concat([full_bins, unique_2_df], ignore_index=True)
 
@@ -162,12 +162,9 @@ def _union_one_sided(seg1_df: pd.DataFrame, seg2_df: pd.DataFrame):
     """
     Gets the union of the segment partitions between the two files.
 
-    Throws out any boundaries that do not occur within a segment of the other seg file,
-    i.e. creates a bin for every segment held in common
-
     :param seg1_df: Dataframe of the first seg file
     :param seg2_df: Dataframe of the second seg file
-    :return: union of two seg files as a list of Bin objects
+    :return: union of two seg files as a Bin dataframe
     """
     bin_list = []
     for chrom in np.arange(1, 23):  # assumes segments in each chromosome (except for XY)
@@ -175,11 +172,8 @@ def _union_one_sided(seg1_df: pd.DataFrame, seg2_df: pd.DataFrame):
         segments2 = seg2_df.loc[seg2_df['Chromosome'] == chrom].reset_index(drop=True)
 
         pointer2 = 0  # starting at beginning of seg2
-
-        for i in range(len(segments1)):
-            start = segments1.loc[i]['Start.bp']
-            end = segments1.loc[i]['End.bp']
-
+        for i, (start, end) in enumerate(zip(segments1['Start.bp'],
+                                             segments1['End.bp'])):
             # create bins for this segment1, updating pointer2 to save computation
             bin_list, pointer2 = create_bins(start, end, segments2, pointer2, segments1.loc[i][STAT_COLUMNS],
                                              chrom, bin_list=bin_list)
@@ -199,7 +193,7 @@ def create_bins(start, end, segments2, pointer2, segments1_stats, chrom, bin_lis
     :param pointer2: current index of seg2 to save computation
     :param segments1_stats: statistics of seg1 to copy to Bin
     :param bin_list: list of bins, for recursion
-    :return: final list of Bin
+    :return: final list of Bin dicts
     """
     if bin_list is None:
         bin_list = []
@@ -239,9 +233,7 @@ def create_bins(start, end, segments2, pointer2, segments1_stats, chrom, bin_lis
 def append_bin(start, end, stats1, stats2, chromosome):
     unique = stats1 is None or stats2 is None
     length = end - start
-    length_overlap = 0
-    length_1_unique = 0
-    length_2_unique = 0
+    length_overlap = length_1_unique = length_2_unique = 0
 
     if not unique:
         length_overlap = length
@@ -272,30 +264,8 @@ def append_bin(start, end, stats1, stats2, chromosome):
             val = None
         bin_dict[f'{key}_2'] = val
 
-    # major_overlap, minor_overlap = get_overlap(stats1, stats2, unique)
-    # bin_dict['major_overlap'] = major_overlap
-    # bin_dict['minor_overlap'] = minor_overlap
-    #
-    # modDf = df.append(bin_dict, ignore_index=True)  #todo super inefficient
-
     return bin_dict
 
 
-def get_overlap(stats1, stats2, unique):
-    """
-    Calculates the overlap for both alleles based on the statistics
-
-    :return: list of major and minor overlap scores
-    """
-    if unique:
-        return 0, 0
-    major = calc_overlap(stats1['mu.major'],
-                         stats1['sigma.major'],
-                         stats2['mu.major'],
-                         stats2['sigma.major'])
-    minor = calc_overlap(stats1['mu.minor'],
-                         stats1['sigma.minor'],
-                         stats2['mu.minor'],
-                         stats2['sigma.minor'])
-
-    return major, minor
+if __name__ == '__main__':
+    score, non_o_len, o_len, df = acr_compare(file_1='./REBC-ACBH-rebc.acs.seg', file_2='./REBC-ACBH-wolf.acs.seg')
