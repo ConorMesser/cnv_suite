@@ -37,16 +37,17 @@ def acr_compare(file_1=None, file_2=None):
 
     minimization_result = minimize(overlap_min_helper, x0=np.array([1]),
                                    args=bins, method='Powell',
-                                   bounds=[(0.00001, 25)])
+                                   bounds=[(0.00001, 25)],
+                                   options={'xtol': 0.000001, 'ftol': 0.00001})
     optimal_ratio = minimization_result.x[0]
     overlap_score, maj_ov, min_ov = get_avg_overlap(optimal_ratio, bins)
     bins["major_overlap"] = maj_ov
     bins["minor_overlap"] = min_ov
 
-    bins.apply(lambda x: (x["mu.major_1"] - 1) * optimal_ratio + 1, axis=1)
-    bins.apply(lambda x: (x["mu.minor_1"] - 1) * optimal_ratio + 1, axis=1)
+    bins["mu.major_1"] = bins.apply(lambda x: (x["mu.major_1"] - 1) * optimal_ratio + 1, axis=1)
+    bins["mu.minor_1"] = bins.apply(lambda x: (x["mu.minor_1"] - 1) * optimal_ratio + 1, axis=1)
     bins["sigma.major_1"] *= optimal_ratio
-    bins["sigma.major_2"] *= optimal_ratio
+    bins["sigma.minor_1"] *= optimal_ratio
 
     non_overlap_length = int(bins['length_1_unique'].sum()) + int(bins['length_2_unique'].sum())
     overlap_length = int(bins['length_overlap'].sum())
