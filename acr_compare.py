@@ -64,6 +64,7 @@ def acr_compare(file_1=None, file_2=None):
     # return weighted average
     return overlap_score, non_overlap_length, overlap_length, bins
 
+
 def calc_overlap(mu1, sigma1, mu2, sigma2, unique):
     """
     Calculate the overlap between two normal distributions, defined by given statistics.
@@ -72,9 +73,10 @@ def calc_overlap(mu1, sigma1, mu2, sigma2, unique):
     :param sigma1: std dev of distribution 1
     :param mu2: mean of distribution 2
     :param sigma2: std dev of distribution 2
+    :param unique: boolean, if bin represents a non-overlapping, unique segment
     :return: overlap between two distributions as value -> [0, 1]
     """
-    # check if any values are None (non-overlapping)
+    # check if bin is non-overlapping
     if unique:
         return 0
 
@@ -186,12 +188,15 @@ def create_bins(start, end, segments2, pointer2, segments1_stats, chrom, bin_lis
     """
     Creates bins over this segment defined by start to end, as compared to segments2 df.
 
-    :param chrom: this chromosome
+    Adds a bin for each overlap section and for all sections that are unique to segment1 (as defined by start, end).
+    Unique segments2 sections must be found by reversing the inputs.
+
     :param start: starting base pair (of seg1)
     :param end: ending base pair (of seg1)
     :param segments2: dataframe for seg2
     :param pointer2: current index of seg2 to save computation
     :param segments1_stats: statistics of seg1 to copy to Bin
+    :param chrom: this chromosome
     :param bin_list: list of bins, for recursion
     :return: final list of Bin dicts
     """
@@ -200,12 +205,13 @@ def create_bins(start, end, segments2, pointer2, segments1_stats, chrom, bin_lis
 
     # exit statement for end of segment2
     if pointer2 >= len(segments2):
+        bin_list.append(append_bin(start, end, segments1_stats, None, chrom))
         return bin_list, pointer2
 
     start2 = segments2.loc[pointer2]['Start.bp']
     end2 = segments2.loc[pointer2]['End.bp']
 
-    if start <= start2:
+    if start < start2:
         if end <= start2:
             bin_list.append(append_bin(start, end, segments1_stats, None, chrom))  # unique segment
             return bin_list, pointer2
@@ -219,7 +225,7 @@ def create_bins(start, end, segments2, pointer2, segments1_stats, chrom, bin_lis
                 bin_list.append(append_bin(start2, end2, segments1_stats, segments2.loc[pointer2][STAT_COLUMNS], chrom))
                 return create_bins(end2, end, segments2, pointer2 + 1, segments1_stats, chrom, bin_list=bin_list)
     else:
-        if end < end2:
+        if end <= end2:
             bin_list.append(append_bin(start, end, segments1_stats, segments2.loc[pointer2][STAT_COLUMNS], chrom))
             return bin_list, pointer2
         else:
@@ -251,7 +257,7 @@ def append_bin(start, end, stats1, stats2, chromosome):
                 'length_1_unique': length_1_unique,
                 'length_2_unique': length_2_unique}
 
-    for key in STAT_COLUMNS:
+    for key in STAT_COLUMNS:  # todo keep in multiindex
         if stats1 is not None:
             val = stats1[key]
         else:
