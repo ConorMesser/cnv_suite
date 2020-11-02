@@ -35,15 +35,6 @@ def acr_compare(file_1=None, file_2=None):
     # take union of segments to allocate bins
     bins = get_union(seg1, seg2)
 
-    # overlap_score = 0
-    # for r in np.linspace(0.1, 2, 500):
-    #     this_score, maj_ov, min_ov = get_avg_overlap(r, bins)
-    #     if this_score > overlap_score:
-    #         overlap_score = this_score
-    #         optimal_ratio = r
-    #         bins["major_overlap"] = maj_ov
-    #         bins["minor_overlap"] = min_ov
-
     minimization_result = minimize(overlap_min_helper, x0=np.array([1]),
                                    args=bins, method='Powell',
                                    bounds=[(0.00001, 25)])
