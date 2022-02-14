@@ -20,11 +20,11 @@ def plot_acr(seg_df, sample_name, csize, segment_colors='difference'):
         seg_df['color_bottom'] = '#000000'
         seg_df['color_top'] = '#000000'
     elif segment_colors == 'difference':
-        seg_df['color_bottom'] = seg_df.apply(lambda x: cmap(int(np.floor(max(0, (0.5 - 0.5 * calc_color(x['hscr.a2'] - x['hscr.a1'])) * 255)))), axis=1)
-        seg_df['color_top'] = seg_df.apply(lambda x: cmap(int(np.floor(min(255, (0.5 + 0.5 * calc_color(x['hscr.a2'] - x['hscr.a1'])) * 255)))), axis=1)
+        seg_df['color_bottom'] = seg_df.apply(lambda x: cmap(int(np.floor(max(0, (0.5 - 0.5 * calc_color(x['major'] - x['minor'])) * 255)))), axis=1)
+        seg_df['color_top'] = seg_df.apply(lambda x: cmap(int(np.floor(min(255, (0.5 + 0.5 * calc_color(x['major'] - x['minor'])) * 255)))), axis=1)
 
-    ax.hlines(seg_df['hscr.a1'].values, seg_df['genome_start'], seg_df['genome_end'], color=seg_df['color_bottom'], lw=5)
-    ax.hlines(seg_df['hscr.a2'].values, seg_df['genome_start'], seg_df['genome_end'], color=seg_df['color_top'], lw=5)
+    ax.hlines(seg_df['minor'].values, seg_df['genome_start'], seg_df['genome_end'], color=seg_df['color_bottom'], lw=5)
+    ax.hlines(seg_df['major'].values, seg_df['genome_start'], seg_df['genome_end'], color=seg_df['color_top'], lw=5)
 
     ax.set_xticks(np.asarray(list(chrom_start.values())[:-1]) + np.asarray(list(csize.values())) / 2)
     ax.set_xticklabels(chr_order, fontsize=12)
