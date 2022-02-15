@@ -5,7 +5,7 @@ from natsort import natsorted
 import plotly.graph_objects as go
 
 
-def plot_acr(seg_df, ax, csize,
+def plot_acr_static(seg_df, ax, csize,
              segment_colors='difference', sigmas=True, min_seg_lw=2, y_upper_lim=2):
     seg_df, chr_order, chrom_start, col_names = prepare_df(seg_df, csize, suffix='.bp')
     add_background(ax, chr_order, csize, height=7)
@@ -247,10 +247,6 @@ def prepare_df(df, csize, suffix='.bp'):
     df['genome_end'] = df.apply(lambda x: chrom_start[str(x['Chromosome'])] + x[f'End{suffix}'], axis=1)
 
     return df, chr_order, chrom_start, col_names
-
-
-def get_rgb_string(c):
-    return '({},{},{})'.format(*c)
 
 
 def get_hex_string(c):
