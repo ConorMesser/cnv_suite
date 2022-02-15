@@ -19,9 +19,7 @@ class CNV_Profile:
                      '11': 135006516, '12': 133851895, '13': 115169878, '14': 107349540, '15': 102531392,
                      '16': 90354753, '17': 81195210, '18': 78077248, '19': 59128983, '20': 63025520,
                      '21': 48129895, '22': 51304566, '23': 156040895, '24': 57227415}
-        elif type(csize) == dict:
-            continue
-        else:
+        elif type(csize) != dict:
             if type(csize) == str:
                 if csize[-3:] == 'bed':
                     columns = ['chr', 'start', 'len']  # three columns if bed file
@@ -37,9 +35,7 @@ class CNV_Profile:
         
         if not cent_loc:
             cent_loc = {chrom: int(size / 2) for chrom, size in csize.items()}  # todo change
-        elif type(cent_loc) == dict:
-            continue
-        else:
+        elif type(cent_loc) != dict:
             if type(cent_loc) == str:
                 cent_loc_df = pd.read_csv(cent_loc, sep='\t', header=None, names=['chr', 'pos'])
             elif type(cent_loc) == pd.DataFrame:
