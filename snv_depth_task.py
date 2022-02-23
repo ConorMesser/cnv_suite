@@ -33,7 +33,7 @@ def depth_workflow(bam, bai, bed, scatter_num=100, with_localization=True):
             }
         )
     else:
-        localization = dict("bam": bam, "bai": bai, "bed", bed)
+        localization = dict(bam=bam, bai=bai, bed=bed)
     
     # split bed file into scatter_num even partitions
     bed_df = pd.read_csv(bed, sep='\t')
@@ -72,7 +72,7 @@ def coverage_workflow(bam, bai, scatter_num=100, bed_path=None, interval_size=No
     if bed_path:
         bed_df = pd.read_csv(bed_path, sep='\t', header=None, names=['chr', 'start', 'end'], dtype={0: str, 1: int, 2: int})
         bed_df['len'] = bed_df['end'] - bed_df['start']
-        scatter_num = 200
+        scatter_num = scatter_num
         import numpy as np
         num_partitions_chr  = np.ceil(bed_df.groupby('chr')['len'].sum() / bed_df['len'].sum() * scatter_num)
         intervals_out = []
@@ -104,7 +104,7 @@ def coverage_workflow(bam, bai, scatter_num=100, bed_path=None, interval_size=No
           bam = tumor_bam_localization["bam"],
           bai = tumor_bam_localization["bai"],
           interval_type = "bed",
-          N = 100,
+          N = scatter_num,
           selected_chrs = [f'chr{i}' for i in range(1, 23)] + ['chrX', 'chrY']
         )
 
