@@ -206,10 +206,10 @@ class CNV_Profile:
     def generate_coverage(self, purity, cov_binned, x_coverage=None, sigma=None):
         """Generate binned coverage profile based on purity and copy number profile.
 
+        :param purity: desired purity/tumor fraction of tumor sample
+        :param cov_binned: tsv file with binned coverage for genome
         :param x_coverage: optional integer to overwrite cov_binned coverage values with Log-Normal Poisson values with lambda=x_coverage
         :param sigma: optional value for Log-Normal sigma value
-        :param purity: desired purity/tumor fraction of tumor sample
-        :param cov_binned: tsv file with binned coverage for genome; coverage manipulation (changing X coverage) already applied
         :return:
 
         Needs to take in the cnv profile and the purity as well:
@@ -223,7 +223,7 @@ class CNV_Profile:
         x_coverage_df = pd.read_csv(cov_binned, sep='\t', names=['chrom', 'start', 'end', 'coverage'],
                                     dtype={'chrom': str, 'start': int, 'end': int}, header=0)
         
-        # todo change contigs to [0-9]+ from chr[0-9XY]+ in input file
+        # change contigs to [0-9]+ from chr[0-9XY]+ in input file
         x_coverage_df = switch_contigs(x_coverage_df)
 
         x_coverage_df = x_coverage_df[x_coverage_df['chrom'].isin(self.csize.keys())]
@@ -238,8 +238,7 @@ class CNV_Profile:
                                            zip(binned_coverage, dispersion_norm)])
             x_coverage_df['coverage'] = this_chr_coverage
 
-        x_coverage_df['cov_adjust'] = np.floor(x_coverage_df['coverage'].values * x_coverage_df['ploidy'].values / 2)
-        x_coverage_df['cov_adjust'] = x_coverage_df['cov_adjust'].astype(int)
+        x_coverage_df['cov_adjust'] = np.floor(x_coverage_df['coverage'].values * x_coverage_df['ploidy'].values / 2).astype(int)
 
         return x_coverage_df[['chrom', 'start', 'end', 'cov_adjust', 'coverage', 'ploidy']]
 
@@ -254,7 +253,7 @@ class CNV_Profile:
                      names=['CHROM','POS','ID','REF','ALT','QUAL','FILTER','INFO','FORMAT','NA12878'])
         bed_df = pd.read_csv(bed, sep='\t', header=0, names=['CHROM', 'POS', 'DEPTH'], dtype={'CHROM': str})
 
-        # todo change contigs to [0-9]+ from chr[0-9XY]+ in input file
+        # change contigs to [0-9]+ from chr[0-9XY]+ in input files
         snv_df = switch_contigs(snv_df)
         bed_df = switch_contigs(bed_df)
         
@@ -274,7 +273,7 @@ class CNV_Profile:
         snv_df['maternal_present'] = snv_df['NA12878'].apply(lambda x: x[0] == '1')
         snv_df['paternal_present'] = snv_df['NA12878'].apply(lambda x: x[2] == '1')
 
-        snv_df['adjusted_depth'] = np.floor(snv_df['DEPTH'] * snv_df['ploidy'] / 2).astype(int)
+        snv_df['adjusted_depth'] = np.floor(snv_df['DEPTH'].values * snv_df['ploidy'].values / 2).astype(int)
         
         # generate phase switch profile
         # chromosome interval trees: False if phase switched
