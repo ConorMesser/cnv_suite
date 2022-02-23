@@ -83,7 +83,7 @@ class CNV_Profile:
             for _ in np.arange(focal_num * ratio_clonal / self.phylogeny.num_subclones):
                 self.add_focal(cluster, median_focal_length)
 
-    def add_arm(self, cluster_num, p_whole, chrom=None):
+    def add_arm(self, cluster_num, p_whole, chrom=None, p_deletion=0.6):
         """Add an arm level copy number event given the specifications.
 
         todo: don't homo-delete whole arm """
@@ -112,7 +112,7 @@ class CNV_Profile:
         # - can delete up to that value (max(1, current_intervals + 1))
         # if amplification:
         # - should probably double whatever is in current intervals
-        if np.random.rand() < 0.6:  # P(deletion)
+        if np.random.rand() < p_deletion:  # P(deletion)
             # check for arm level deletion in other interval list
             weighted_del = 0
             for o in other_int:
@@ -163,13 +163,14 @@ class CNV_Profile:
                 chosen_amp = cnv_level if i.data.cn_change != 0 else 0
                 self.event_trees[chrom].add_seg_interval('focal', cluster_num, chosen_amp, i)
 
-    def add_wgd(self):  # todo
-        """
+    def add_wgd(self, cluster_num):  # todo
+        """Add whole genome doubling for specified cluster.
 
-        Call add_arm for each chromosome
-        :return:
+        :return: None
         """
-        pass
+        for chrom in self.csize.keys():
+            # apply whole arm amplification to each chromosome
+            self.add_arm(cluster_num, 1, chrom=chrom, p_deletion=0)
 
     def add_chromothripsis(self):  # todo
         pass
@@ -220,8 +221,8 @@ class CNV_Profile:
         """
         if not sigma:
             sigma = 1
-        x_coverage_df = pd.read_csv(cov_binned, sep='\t', names=['chrom', 'start', 'end', 'coverage'],
-                                    dtype={'chrom': str, 'start': int, 'end': int}, header=0)
+        x_coverage_df = pd.read_csv(cov_binned, sep='\t', names=['chrom', 'start', 'end', 'coverage', 'cov_adj'],
+                                    dtype={'chrom': str, 'start': int, 'end': int}, header=None)
         
         # todo change contigs to [0-9]+ from chr[0-9XY]+ in input file
         x_coverage_df = switch_contigs(x_coverage_df)
@@ -407,7 +408,7 @@ class Chromosome:
         for segment in both_alleles:
             seg_df.append([self.chr_name, segment.begin, segment.end, segment.data['major'], segment.data['minor']])
 
-        return pd.DataFrame(seg_df, columns=['Chromosome', 'Start.bp', 'End.bp', 'major', 'minor'])
+        return pd.DataFrame(seg_df, columns=['Chromosome', 'Start.bp', 'End.bp', 'mu.major', 'mu.minor'])
 
     def get_phased_df(self, pat_tree, mat_tree):
         both_alleles = IntervalTree(list(pat_tree) + list(mat_tree))
@@ -497,7 +498,7 @@ def switch_contigs(input_data):
         
         input_data[column_label] = input_data[column_label].apply(lambda x: re.search('(?<=chr)[0-9XY]+|^[0-9XY]+', x).group())
         input_data.replace(to_replace={column_label:{'X':'23', 'Y':'24'}}, value=None, inplace=True)
-        input_data.sort_values(column_label, key=natsort.natsort_keygen(), inplace=True)
+        # input_data.sort_values([column_label, 'start'], key=natsort.natsort_keygen(), inplace=True)  # should already be sorted
         return input_data
     elif type(input_data) == dict:
         input_data = {re.search('(?<=chr)[0-9XY]+|^[0-9XY]+', key).group():loc for key, loc in input_data.items()}
