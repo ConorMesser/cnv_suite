@@ -5,6 +5,7 @@ from collections import namedtuple, deque
 from random import choice
 import re
 import natsort
+from pandarallel import pandarallel
 
 
 Event = namedtuple("Event", ['type', 'allele', 'cluster_num', 'cn_change'])
@@ -228,9 +229,17 @@ class CNV_Profile:
         x_coverage_df = switch_contigs(x_coverage_df)
 
         x_coverage_df = x_coverage_df[x_coverage_df['chrom'].isin(self.csize.keys())]
-        x_coverage_df['ploidy'] = x_coverage_df.apply(
-            lambda x: get_average_ploidy(self.cnv_trees[x['chrom']], x['start'], x['end'], purity),
-            axis=1)  # check genome bins - inclusive or exclusive (how it is now) todo
+        
+        pandarallel.initialize()
+        x_coverage_df['paternal_ploidy'] = x_coverage_df.parallel_apply(
+            lambda x: single_allele_ploidy(self.cnv_trees[x['chrom']][0], x['start'], x['end']),
+            axis=1)
+        x_coverage_df['maternal_ploidy'] = x_coverage_df.parallel_apply(
+            lambda x: single_allele_ploidy(self.cnv_trees[x['chrom']][1], x['start'], x['end']),
+            axis=1)
+        x_coverage_df['ploidy'] = get_average_ploidy(x_coverage_df['paternal_ploidy'].values,
+                                                     x_coverage_df['maternal_ploidy'].values,
+                                                     purity)
 
         if x_coverage:  # is it okay to apply LNP to binned coverage? todo
             dispersion_norm = np.random.normal(0, sigma, x_coverage_df.shape[0])
@@ -239,6 +248,7 @@ class CNV_Profile:
                                            zip(binned_coverage, dispersion_norm)])
             x_coverage_df['coverage'] = this_chr_coverage
 
+        # todo use coverage or adjusted coverage???
         x_coverage_df['cov_adjust'] = np.floor(x_coverage_df['coverage'].values * x_coverage_df['ploidy'].values / 2).astype(int)
 
         return x_coverage_df[['chrom', 'start', 'end', 'cov_adjust', 'coverage', 'ploidy']]
@@ -259,17 +269,21 @@ class CNV_Profile:
         bed_df = switch_contigs(bed_df)
         
         snv_df = snv_df.merge(bed_df, on=['CHROM', 'POS'])
-        snv_df['ploidy'] = snv_df.apply(
-            lambda x: get_average_ploidy(self.cnv_trees[x['CHROM']], x['POS'], x['POS'] + 1, purity),
+        
+        pandarallel.initialize()
+        snv_df['paternal_ploidy'] = snv_df.parallel_apply(
+            lambda x: single_allele_ploidy(self.cnv_trees[x['CHROM']][0], x['POS'], x['POS'] + 1),
             axis=1)
+        snv_df['maternal_ploidy'] = snv_df.parallel_apply(
+            lambda x: single_allele_ploidy(self.cnv_trees[x['CHROM']][1], x['POS'], x['POS'] + 1),
+            axis=1)
+        snv_df['ploidy'] = get_average_ploidy(snv_df['paternal_ploidy'].values,
+                                              snv_df['maternal_ploidy'].values,
+                                              purity)
 
-        snv_df['maternal_prop'] = snv_df.apply(
-            lambda x: ((sorted(self.cnv_trees[x['CHROM']][1][x['POS']])[0].data.cn_change) * purity +
-                      (1 - purity) ) / x['ploidy'], axis=1)
+        snv_df['maternal_prop'] = ( snv_df['maternal_ploidy'].values * purity + (1 - purity) ) / snv_df['ploidy'].values
 
-        snv_df['paternal_prop'] = snv_df.apply(
-            lambda x: ((sorted(self.cnv_trees[x['CHROM']][0][x['POS']])[0].data.cn_change) * purity +
-                      (1 - purity) ) / x['ploidy'], axis=1)
+        snv_df['paternal_prop'] = ( snv_df['paternal_ploidy'].values * purity + (1 - purity) ) / snv_df['ploidy'].values
 
         snv_df['maternal_present'] = snv_df['NA12878'].apply(lambda x: x[0] == '1')
         snv_df['paternal_present'] = snv_df['NA12878'].apply(lambda x: x[2] == '1')
@@ -281,7 +295,7 @@ class CNV_Profile:
         correct_phase_interval_trees = self.generate_phase_switching()
 
         # calculate alt counts for each SNV
-        snv_df['alt_count'] = snv_df.apply(
+        snv_df['alt_count'] = snv_df.parallel_apply(
             lambda x: get_alt_count(x['maternal_prop'], x['paternal_prop'], x['maternal_present'],
                                     x['paternal_present'], x['adjusted_depth'],
                                     correct_phase_interval_trees[x['CHROM']][x['POS']].pop().data), axis=1)
@@ -327,17 +341,20 @@ def get_alt_count(m_prop, p_prop, m_present, p_present, coverage, correct_phase)
         return np.random.binomial(coverage, p_prop)
 
 
-def get_average_ploidy(tree, start, end, purity):
-    # need to run over paternal and maternal alleles
-    def single_allele_ploidy(allele):
-        intervals = allele.envelop(start, end) | allele[start] | allele[end - 1]
-        interval_totals = [(min(i.end, end) - max(i.begin, start)) * i.data[3] for i in  # todo
-                           intervals]
-        return np.asarray(interval_totals).sum() / (end - start)
-    pat_ploidy = single_allele_ploidy(tree[1])
-    mat_ploidy = single_allele_ploidy(tree[0])
+def get_average_ploidy(pat_ploidy, mat_ploidy, purity):
+    """Get the average ploidy defined by the paternal/maternal tumor CN and the purity."""
+    return (pat_ploidy + mat_ploidy) * purity + 2 * (1 - purity)
 
-    return (mat_ploidy + pat_ploidy) * purity + 2 * (1 - purity)
+
+def single_allele_ploidy(allele, start, end):
+    """Get the ploidy for this allele tree over this interval (start, end)."""
+    # check genome bins - inclusive or exclusive (how it is now) todo
+    intervals = allele.envelop(start, end) | allele[start] | allele[end - 1]
+    if len(intervals) == 1:
+        return intervals.pop().data[3]
+    else:
+        interval_totals = [(min(i.end, end) - max(i.begin, start)) * i.data[3] for i in intervals]
+        return sum(interval_totals) / (end - start)
 
 
 class Chromosome:
