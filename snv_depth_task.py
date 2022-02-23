@@ -33,7 +33,7 @@ def depth_workflow(bam, bai, bed, scatter_num=100, with_localization=True):
             }
         )
     else:
-        localization = dict("bam": bam, "bai": bai, "bed", bed)
+        localization = {"bam": bam, "bai": bai, "bed": bed}
     
     # split bed file into scatter_num even partitions
     bed_df = pd.read_csv(bed, sep='\t')

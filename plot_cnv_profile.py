@@ -231,6 +231,7 @@ def prepare_df(df, csize, suffix='.bp'):
             sigma_major = 'seg_sigma',  # = tau sigma (not allelic sigma), generally slightly lower
             sigma_minor = 'seg_sigma',  # = tau sigma
         )
+    # todo add major and minor case (and no sigma?)
     else:
         col_names = None
 
