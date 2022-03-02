@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from intervaltree import Interval, IntervalTree
 from collections import namedtuple, deque
-from random import choice
+from random import choice, shuffle
 import re
 import natsort
 from pandarallel import pandarallel
@@ -50,13 +50,13 @@ class CNV_Profile:
         self.cent_loc = switch_contigs(cent_loc)
         self.csize = switch_contigs(csize)
 
-        self.event_trees = self.init_all_chrom()
+        self.event_trees = self._init_all_chrom()
         self.phylogeny = Phylogeny(num_subclones)
         self.cnv_trees = None
         self.cnv_profile_df = None
         self.phased_profile_df = None
 
-    def init_all_chrom(self):
+    def _init_all_chrom(self):
         """Initialize event tree dictionaries with Chromosomes containing a single haploid interval for each allele."""
         tree_dict = {}
         for chrom, size in self.csize.items():
@@ -70,21 +70,27 @@ class CNV_Profile:
     def add_cnv_events(self, arm_num, focal_num, p_whole, ratio_clonal,
                        median_focal_length=1.8 * 10**6,
                        chromothripsis=False, wgd=False):
-        """Add CNV events according to criteria."""
+        """General helper to add CNV events according to criteria.
+        
+        Whole genome doubling and chromothripsis both applied as final clonal events if specified."""
         # add clonal events
         for _ in np.arange(arm_num * ratio_clonal):
             self.add_arm(1, p_whole)
         for _ in np.arange(focal_num * ratio_clonal):
             self.add_focal(1, median_focal_length)
+        if wgd:
+            self.add_wgd(1)
+        if chromothripsis:
+            self.add_chromothripsis(1, median_focal_length=median_focal_length)
 
         # add subclonal events
         for cluster in np.arange(2, self.phylogeny.num_subclones + 2):
-            for _ in np.arange(arm_num * ratio_clonal / self.phylogeny.num_subclones):
+            for _ in np.arange(arm_num * (1 - ratio_clonal) / self.phylogeny.num_subclones):
                 self.add_arm(cluster, p_whole)
-            for _ in np.arange(focal_num * ratio_clonal / self.phylogeny.num_subclones):
+            for _ in np.arange(focal_num * (1 - ratio_clonal) / self.phylogeny.num_subclones):
                 self.add_focal(cluster, median_focal_length)
 
-    def add_arm(self, cluster_num, p_whole, chrom=None, p_deletion=0.6):
+    def add_arm(self, cluster_num, p_whole=0.5, p_q=0.5, chrom=None, p_deletion=0.6, allele=None):
         """Add an arm level copy number event given the specifications.
 
         todo: don't homo-delete whole arm """
@@ -95,13 +101,14 @@ class CNV_Profile:
 
         # choose arm-level vs. whole chromosome event
         if np.random.rand() > p_whole:
-            if np.random.rand() > 0.5:
+            if np.random.rand() > p_q:
                 start = self.cent_loc[chrom]
             else:
                 end = self.cent_loc[chrom]
 
         # choose maternal vs. paternal
-        allele = 'paternal' if np.random.rand() > 0.5 else 'maternal'
+        if not allele:
+            allele = 'paternal' if np.random.rand() > 0.5 else 'maternal'
 
         # choose level (based on current CN and cluster number)
         pat_int, mat_int = self.calculate_cnv_lineage(chrom, start, end, cluster_num)
@@ -132,39 +139,46 @@ class CNV_Profile:
             for i in desired_int:
                 self.event_trees[chrom].add_seg_interval('arm', cluster_num, i.data.cn_change, i)
 
-        # maybe return things to make CN LoH easier
+    def add_focal(self, cluster_num, median_focal_length=1.8 * 10**6, cnv_lambda=0.8, chrom=None, p_deletion=0.5, allele=None, position=None, cnv_level=None):
+        if not chrom:  # choose chromosome
+            chrom = choice(list(self.csize.keys()))
 
-    def add_focal(self, cluster_num, median_focal_length=1.8 * 10**6):
-        # choose chromosome
-        chrom = choice(list(self.csize.keys()))
-
-        # choose length of event - from exponential
-        focal_length_rate = median_focal_length / np.log(2)
-        focal_length = np.floor(np.random.exponential(focal_length_rate)).astype(int)
-        start_pos = np.random.randint(1, max(2, self.csize[chrom] - focal_length))
-        end_pos = start_pos + focal_length
+        if not position:
+            # choose length of event - from exponential
+            focal_length_rate = median_focal_length / np.log(2)
+            focal_length = np.floor(np.random.exponential(focal_length_rate)).astype(int)
+            start_pos = np.random.randint(1, max(2, self.csize[chrom] - focal_length))
+            end_pos = start_pos + focal_length
+        else:
+            start_pos = position[0]
+            end_pos = position[1]
 
         # choose maternal vs. paternal
-        allele = 'paternal' if np.random.rand() > 0.5 else 'maternal'
+        if not allele:
+            allele = 'paternal' if np.random.rand() > 0.5 else 'maternal'
 
         # get current CN intervals for this branch of phylogenetic tree
         pat_int, mat_int = self.calculate_cnv_lineage(chrom, start_pos, end_pos, cluster_num)
         desired_int = pat_int if allele == 'paternal' else mat_int
 
-        if np.random.rand() < 0.5:  # P(deletion)
+        if np.random.rand() < p_deletion:
             # lean towards fully deleting intervals (if there is already an amplification)
             for i in desired_int:
                 curr_level = i.data.cn_change
                 chosen_del = max(1, curr_level - np.random.poisson(curr_level / 10)) if curr_level != 0 else 0
                 self.event_trees[chrom].add_seg_interval('focal', cluster_num, -chosen_del, i)
         else:
+            if not cnv_level:
+                cnv_level = np.random.poisson(cnv_lambda) + 1
+                
             # if amplification, just add equal number for entire interval unless already fully deleted
-            cnv_level = np.random.poisson(0.8) + 1
             for i in desired_int:
                 chosen_amp = cnv_level if i.data.cn_change != 0 else 0
                 self.event_trees[chrom].add_seg_interval('focal', cluster_num, chosen_amp, i)
+        
+        return start_pos, end_pos
 
-    def add_wgd(self, cluster_num):  # todo
+    def add_wgd(self, cluster_num):
         """Add whole genome doubling for specified cluster.
 
         :return: None
@@ -173,16 +187,72 @@ class CNV_Profile:
             # apply whole arm amplification to each chromosome
             self.add_arm(cluster_num, 1, chrom=chrom, p_deletion=0)
 
-    def add_chromothripsis(self):  # todo
-        pass
+    def add_chromothripsis(self, cluster_num, chrom=None, cn_states=2, allele=None, num_events=None, median_focal_length=1.8 * 10**6):
+        if not chrom:
+            chrom = choice(list(self.csize.keys()))
+        if not allele:  # assuming all events happen on single chromatid (allele)
+            allele = 'paternal' if np.random.rand() > 0.5 else 'maternal'
+        
+        # get number of events
+        if not num_events:
+            num_events = np.random.randint(20, 70)
+        
+        # generate sizes of events
+        focal_length_rate = median_focal_length / np.log(2)
+        focal_length = np.floor(np.random.exponential(focal_length_rate, num_events)).astype(int)
+        
+        # assign states (alternating if 2, more complicated if 3+)
+        if cn_states == 2:
+            states = [0, 1] * int(num_events / 2) + [0]
+        else:
+            all_states = list(range(cn_states))
+            select_states = all_states[:]
+            select_states.remove(1)
+            states = [1] * num_events
+            for i in range(num_events):
+                new_state = random.choice(select_states)
+                states[i] = new_state
+                select_states = all_states[:]
+                select_states.remove(1)
+                
+        start_pos = np.random.randint(1, max(2, self.csize[chrom] - sizes.sum()))
+        for this_size, this_state in zip(sizes, states):
+            end_pos = start__pos + this_size
+            if this_state == 0:  # deletion
+                p_deletion = 1
+            else:
+                p_deletion = 0
+            
+            if this_state != 1:  # skip sections of state == 1
+                _, _ = self.add_focal(cluster_num, position=(start_pos, end_pos), chrom=chrom, p_deletion=p_deletion, allele=allele, cnv_level=this_state - 1)
+            
+            start_pos = end_pos + 1
 
-    def add_cn_loh(self):  # todo
-        """
+    def add_cn_loh(self, cluster_num, p_whole=0.5, chrom=None, focal=False):
+        """Add loss of heterozygosity event (deletion of one allele, amplification of the other)
 
-        Call add_arm or add_focal twice, once for each allele.
-        :return:
+        Call add_arm (default) or add_focal (if focal attribute is set to True) twice, once for each allele. 
+        :cluster_num
         """
-        pass
+        alleles = shuffle(['paternal', 'maternal'])
+        
+        if not chrom:
+            chrom = choice(list(self.csize.keys()))
+ 
+        if not focal:  # for chromosome level event
+            # choose arm-level vs. whole chromosome event
+            if np.random.rand() > p_whole:
+                p_q = 1 if np.random.rand() > 0.5 else 0
+                p_whole = 0
+            else:
+                p_q=None
+                p_whole = 1
+
+            self.add_arm(cluster_num, p_whole, p_q=p_q, chrom=chrom, p_deletion=0, allele=allele[0])
+            self.add_arm(cluster_num, p_whole, p_q=p_q, chrom=chrom, p_deletion=1, allele=allele[1])
+        else:  # for focal                   
+            start_pos, end_pos = self.add_focal(cluster_num, chrom=chrom, p_deletion=0, allele=allele[0])
+            _, _ = self.add_focal(cluster_num, position=(start_pos, end_pos), chrom=chrom, p_deletion=1, allele=allele[1])
 
     def calculate_cnv_lineage(self, chrom, start, end, cluster_num):
         return self.event_trees[chrom].calc_current_cnv_lineage(start, end, cluster_num, self.phylogeny)
