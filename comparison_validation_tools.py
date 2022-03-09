@@ -64,6 +64,16 @@ def compare_length_distribution(file_1=None, file_2=None, seg_df_1=None, seg_df_
 
 
 def breakpoint_distance(file_control=None, file_case=None, seg_df_control=None, seg_df_case=None):
+    """Plots the distance to the nearest breakpoints with the difference in mu's for two profiles.
+
+    Plots combined distance to the breakpoints left and right of each intersection segment (after merging the two profiles) and assigns to one of four categories based on size and placement of original segments (relative to merged segment)
+
+    :param file_control: filename and path for control seg file, optional (must give either filename of DataFrame)
+    :param file_case: filename and path for case seg file, optional (must give either filename of DataFrame)
+    :param seg_df_control: pandas.DataFrame for control seg file, optional (must give either filename of DataFrame)
+    :param seg_df_case: pandas.DataFrame for control seg file, optional (must give either filename of DataFrame)
+    :return: (plotly Figure, pandas.Series with breakpoint category counts)
+    """
     assert (file_control or seg_df_control is not None) and (file_case or seg_df_case is not None)
 
     if file_control:
@@ -92,7 +102,7 @@ def breakpoint_distance(file_control=None, file_case=None, seg_df_control=None, 
 
     fig = px.scatter(diff_df_stacked, x='bp_size', y='mu_diff', color='homolog', facet_col='bp_type', hover_data=['chrom', 'start', 'end'])
 
-    return fig
+    return fig, diff_df.groupby('bp_type').size()
 
 
 def mu_sigma_difference(file_1=None, file_2=None, seg_df_1=None, seg_df_2=None, mu_lim=None, sigma_lim=None):
