@@ -96,12 +96,11 @@ def mu_sigma_difference(file_1=None, file_2=None, seg_df_1=None, seg_df_2=None, 
     diff_df = []
     for tree in contig_trees:
         diff_df.append(get_differences_from_intervals(tree, sample_names=[seg_df_1.loc[0, 'Sample_ID'],
-                                                                          seg_df_2.loc[0, 'Sample_ID']],
-                                                      remove_unmatched=True))
+                                                                          seg_df_2.loc[0, 'Sample_ID']]))
 
     diff_df = pd.concat(diff_df)
 
-    fig, ax = plt.subplots(1,1)
+    fig, ax = plt.subplots(1, 1)
 
     # code taken from Claudia's cgaprojects_ibm_tAML_analysis
     ax.axvline(0, c='k', linewidth=0.5)
@@ -141,7 +140,7 @@ def mu_sigma_difference(file_1=None, file_2=None, seg_df_1=None, seg_df_2=None, 
     return fig, ax
 
 
-def get_differences_from_intervals(contig_tree, sample_names=None, remove_unmatched=True):
+def get_differences_from_intervals(contig_tree, sample_names=None):
     if sample_names is None:
         sample_names = ['profile_1', 'profile_2']
     length_arr = []
@@ -152,21 +151,7 @@ def get_differences_from_intervals(contig_tree, sample_names=None, remove_unmatc
 
     for interval in contig_tree:
         if len(interval.data) == 1:
-            if remove_unmatched:
-                continue
-            else:
-                d = list(interval.data.values())[0]  # we know there is only one value
-
-                if sample_names[0] in interval.data.keys():
-                    mu_minor_diff.append(1 - d.mu_minor)
-                    mu_major_diff.append(1 - d.mu_major)
-                    sigma_minor_diff.append(-d.sigma_minor)
-                    sigma_major_diff.append(-d.sigma_major)
-                else:
-                    mu_minor_diff.append(d.mu_minor - 1)
-                    mu_major_diff.append(d.mu_major - 1)
-                    sigma_minor_diff.append(d.sigma_minor)
-                    sigma_major_diff.append(d.sigma_major)
+            continue
         elif len(interval.data) == 2:
             mu_minor_diff.append(interval.data[sample_names[1]].mu_minor -
                                  interval.data[sample_names[0]].mu_minor)
