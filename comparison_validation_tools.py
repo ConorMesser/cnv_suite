@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
 import math
+import plotly.express as px
 
 from cnv_helper_methods import get_segment_interval_trees
 
@@ -17,13 +18,16 @@ def num_segments(file_name=None, seg_df=None):
         return seg_df.shape[0]
 
 
-def compare_length_distribution(file_1=None, file_2=None, seg_df_1=None, seg_df_2=None):
+def compare_length_distribution(file_1=None, file_2=None, seg_df_1=None, seg_df_2=None, sample_names=None):
     assert (file_1 or seg_df_1 is not None) and (file_2 or seg_df_2 is not None)
 
     if file_1:
         seg_df_1 = pd.read_csv(file_1, sep='\t')
     if file_2:
         seg_df_2 = pd.read_csv(file_2, sep='\t')
+
+    if sample_names is None:
+        sample_names = ['Profile 1', 'Profile 2']
 
     seg_df_1['length'] = seg_df_1['End.bp'] - seg_df_1['Start.bp']
     seg_df_2['length'] = seg_df_2['End.bp'] - seg_df_2['Start.bp']
@@ -32,10 +36,11 @@ def compare_length_distribution(file_1=None, file_2=None, seg_df_1=None, seg_df_
 
     fig, ax = plt.subplots(1, 2)
     round_to = 10**7
-    bins = np.linspace(0, round_to * math.ceil((np.concatenate([seg_df_1['length'].values, seg_df_2['length'].values])).max() / round_to), 50)
+    bins = np.linspace(0, round_to * math.ceil((np.max(np.concatenate([seg_df_1['length'].values,
+                                                                       seg_df_2['length'].values]))) / round_to), 50)
     ax[0].hist(seg_df_1['length'], bins, alpha=0.5, label='x', density=True)
     ax[0].hist(seg_df_2['length'], bins, alpha=0.5, label='y', density=True)
-    ax[0].legend(['First profile', 'Second profile'], loc='upper right')
+    ax[0].legend(sample_names, loc='upper right')
     ax[0].set_xlabel('Segment Length (bp)')
     ax[0].set_ylabel('Density of Counts')
     ax[0].set_title('Segment Lengths', fontsize=10)
@@ -66,13 +71,28 @@ def breakpoint_distance(file_control=None, file_case=None, seg_df_control=None, 
     if file_case:
         seg_df_case = pd.read_csv(file_case, sep='\t')
 
-    # breakpoints can span large distances (over centromere but also within chromosome)
-    # should I calculate distance for both sides of breakpoint?
-    # does direction matter?
+    if 'Sample_ID' not in seg_df_control:
+        seg_df_control['Sample_ID'] = 'control_profile'
+    if 'Sample_ID' not in seg_df_case:
+        seg_df_case['Sample_ID'] = 'case_profile'
 
-    # visualizations:
-    # - can make scatter plot of distance (y axis) over genome
-    # - could make scatter plot of distance by some sort of CN difference representation
+    seg_df_control.dropna(subset=['mu.minor', 'mu.major'], inplace=True)
+    seg_df_case.dropna(subset=['mu.minor', 'mu.major'], inplace=True)
+
+    seg_df_control['start'], seg_df_control['end'] = seg_df_control['Start.bp'], seg_df_control['End.bp']
+    seg_df_case['start'], seg_df_case['end'] = seg_df_case['Start.bp'], seg_df_case['End.bp']
+
+    contig_trees = get_segment_interval_trees(pd.concat([seg_df_control, seg_df_case]))
+    diff_df = pd.concat([get_differences_from_intervals(tree, i+1, sample_names=[seg_df_control.loc[0, 'Sample_ID'],
+                                                                                 seg_df_case.loc[0, 'Sample_ID']],
+                                                        breakpoint_data=True)
+                         for i, tree in enumerate(contig_trees)])
+    diff_df_stacked = diff_df.set_index(['chrom', 'start', 'end', 'bp_size', 'bp_type'])[['mu_major_diff', 'mu_minor_diff']].stack().reset_index(
+        name='mu_diff').rename(columns={'level_5': 'homolog'})
+
+    fig = px.scatter(diff_df_stacked, x='bp_size', y='mu_diff', color='homolog', facet_col='bp_type', hover_data=['chrom', 'start', 'end'])
+
+    return fig
 
 
 def mu_sigma_difference(file_1=None, file_2=None, seg_df_1=None, seg_df_2=None, mu_lim=None, sigma_lim=None):
@@ -93,15 +113,11 @@ def mu_sigma_difference(file_1=None, file_2=None, seg_df_1=None, seg_df_2=None, 
     contig_trees = get_segment_interval_trees(pd.concat([seg_df_1, seg_df_2]))
 
     # get differences, with non-overlapping segments removed (this can be visualized better using acr_compare tool)
-    diff_df = []
-    for tree in contig_trees:
-        diff_df.append(get_differences_from_intervals(tree, sample_names=[seg_df_1.loc[0, 'Sample_ID'],
-                                                                          seg_df_2.loc[0, 'Sample_ID']]))
-
-    diff_df = pd.concat(diff_df)
+    diff_df = pd.concat([get_differences_from_intervals(tree, i+1, sample_names=[seg_df_1.loc[0, 'Sample_ID'],
+                                                                                     seg_df_2.loc[0, 'Sample_ID']])
+                         for i, tree in enumerate(contig_trees)])
 
     fig, ax = plt.subplots(1, 1)
-
     # code taken from Claudia's cgaprojects_ibm_tAML_analysis
     ax.axvline(0, c='k', linewidth=0.5)
     ax.axhline(0, c='k', linewidth=0.5)
@@ -128,7 +144,7 @@ def mu_sigma_difference(file_1=None, file_2=None, seg_df_1=None, seg_df_2=None, 
     ax.set_title('Comparison of CNV Profiles')
 
     # legend
-    size_list = np.arange(0, max_length, np.ceil(max_length / 5))[1:]
+    size_list = np.arange(0, max_length, np.ceil(max_length / 5))
     handles = [
         plt.scatter([-1], [-1], s=length / max_length * 100 + 3, c='gray')
         for length
@@ -140,34 +156,53 @@ def mu_sigma_difference(file_1=None, file_2=None, seg_df_1=None, seg_df_2=None, 
     return fig, ax
 
 
-def get_differences_from_intervals(contig_tree, sample_names=None):
+def get_differences_from_intervals(contig_tree, contig_name, sample_names=None, breakpoint_data=False):
     if sample_names is None:
         sample_names = ['profile_1', 'profile_2']
     length_arr = []
-    mu_minor_diff = []
-    mu_major_diff = []
-    sigma_minor_diff = []
-    sigma_major_diff = []
+    data = []
 
     for interval in contig_tree:
         if len(interval.data) == 1:
             continue
         elif len(interval.data) == 2:
-            mu_minor_diff.append(interval.data[sample_names[1]].mu_minor -
-                                 interval.data[sample_names[0]].mu_minor)
-            mu_major_diff.append(interval.data[sample_names[1]].mu_major -
-                                 interval.data[sample_names[0]].mu_major)
-            sigma_minor_diff.append(interval.data[sample_names[1]].sigma_minor -
-                                    interval.data[sample_names[0]].sigma_minor)
-            sigma_major_diff.append(interval.data[sample_names[1]].sigma_major -
-                                    interval.data[sample_names[0]].sigma_major)
+            mu_minor_diff = interval.data[sample_names[1]].mu_minor - interval.data[sample_names[0]].mu_minor
+            mu_major_diff = interval.data[sample_names[1]].mu_major - interval.data[sample_names[0]].mu_major
+            sigma_minor_diff = interval.data[sample_names[1]].sigma_minor - interval.data[sample_names[0]].sigma_minor
+            sigma_major_diff = interval.data[sample_names[1]].sigma_major - interval.data[sample_names[0]].sigma_major
+            interval_data = [contig_name, interval.begin, interval.end, mu_minor_diff, mu_major_diff, sigma_minor_diff, sigma_major_diff]
+
+            if breakpoint_data:
+                start_dist_2 = interval.begin - interval.data[sample_names[1]].start
+                start_dist_1 = interval.begin - interval.data[sample_names[0]].start
+                end_dist_2 = interval.data[sample_names[1]].end - interval.end
+                end_dist_1 = interval.data[sample_names[0]].end - interval.end
+                bp_size = sum([start_dist_1, start_dist_2, end_dist_1, end_dist_2])
+
+                if start_dist_1 == 0 and end_dist_1 == 0:
+                    bp_type = 'smaller_1'
+                elif start_dist_2 == 0 and end_dist_2 == 0:
+                    bp_type = 'smaller_2'
+                elif start_dist_2 == 0 and end_dist_1 == 0:
+                    bp_type = '2_shifted_right'
+                elif start_dist_1 == 0 and end_dist_2 == 0:
+                    bp_type = '2_shifted_left'
+                elif start_dist_1 == start_dist_2 == end_dist_1 == end_dist_2 == 0:
+                    bp_type = 'perfect_match'
+                else:
+                    bp_type = 'unknown'
+                interval_data = interval_data + [bp_type, bp_size]
         else:
             raise ValueError(f'Interval should have one or two samples, not {len(interval.data)}')
 
-        length_arr.append(interval.end - interval.begin)
+        interval_data.append(interval.end - interval.begin)
+        data.append(interval_data)
 
-    return pd.DataFrame(np.asarray([length_arr, mu_minor_diff, mu_major_diff, sigma_minor_diff, sigma_major_diff]).transpose(),
-                        columns=['length', 'mu_minor_diff', 'mu_major_diff', 'sigma_minor_diff', 'sigma_major_diff'])
+    columns = ['chrom', 'start', 'end', 'mu_minor_diff', 'mu_major_diff', 'sigma_minor_diff', 'sigma_major_diff']
+    if breakpoint_data:
+        columns = columns + ['bp_type', 'bp_size']
+
+    return pd.DataFrame(data, columns=columns + ['length'])
 
 
 
