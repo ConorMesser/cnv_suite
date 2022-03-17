@@ -16,11 +16,14 @@ def get_segment_interval_trees(seg_dfs, seg_cluster_df=None, cluster_colname='Cl
     :param cluster_colname: Column name for the cluster in the seg_cluster_df; defaults to Cluster_assignment
     :return: list of IntervalTree givings segment data for each chromosome
     """
-    seg_cluster_df = seg_cluster_df.astype({'Start.bp': int, 'End.bp': int})
-    if 'Sample_ID' not in seg_cluster_df:
-        seg_cluster_df['Sample_ID'] = 'SAMPLE'
-    essential_data_columns = seg_cluster_df.columns.drop(['Sample_ID', 'Start.bp', 'End.bp'])
-    Data_Tuple = namedtuple("Data_Tuple", [*essential_data_columns, cluster_colname],
+    seg_dfs = seg_dfs.astype({'Start.bp': int, 'End.bp': int})
+    if 'Sample_ID' not in seg_dfs:
+        seg_dfs['Sample_ID'] = 'SAMPLE'
+
+    # must remove periods in columns used to create namedtuple (replace with underscores)
+    essential_data_columns = {s: s.replace('.', '_') for s in
+                              seg_dfs.columns.drop(['Sample_ID', 'Chromosome', 'Start.bp', 'End.bp']).values}
+    Data_Tuple = namedtuple("Data_Tuple", [*essential_data_columns.values(), cluster_colname],
                             rename=True, defaults=['0'])  # if cluster isn't provided, defaults to str(0)
 
     contig_trees = []
@@ -33,7 +36,7 @@ def get_segment_interval_trees(seg_dfs, seg_cluster_df=None, cluster_colname='Cl
                                                zip(contig_seg_df['Start.bp'],
                                                    contig_seg_df['End.bp'],
                                                    contig_seg_df['Sample_ID'],
-                                                   contig_seg_df[essential_data_columns].to_numpy()))
+                                                   contig_seg_df[essential_data_columns.keys()].to_numpy()))
 
         single_tree.split_overlaps()
         single_tree.merge_equals(data_reducer=lambda current, new: dict(**current, **new))
