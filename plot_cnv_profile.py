@@ -99,8 +99,8 @@ def plot_acr_interactive(seg_df, fig, csize,
     fig.update_xaxes(title_text="Chromosome", row=-1, col=1)
     fig.update_yaxes(showgrid=False,
                      zeroline=False,
-                     tickvals=list(range(y_upper_lim + 1)),
-                     ticktext=[str(i) for i in range(y_upper_lim + 1)],
+                     tickvals=list(range(int(np.floor(y_upper_lim)) + 1)),
+                     ticktext=[str(i) for i in range(int(np.floor(y_upper_lim)) + 1)],
                      tickfont_size=12,
                      ticks="outside",
                      range=[-0.05, y_upper_lim + 0.05],
@@ -117,13 +117,12 @@ def make_cnv_scatter(series, fig, col_names, lw=0.015, row_num=1, sigmas=False):
     end = series['genome_end']
     mu_maj = series[col_names['mu_major']]
     mu_min = series[col_names['mu_minor']]
-    sigma = series[col_names['sigma_major']]
+    sigma = series[col_names['sigma_major']] if sigmas else 0
+    length = end - start
+    n_probes = series['n_probes'] if 'n_probes' in series else np.NaN
     color_maj = series['color_top']
     color_min = series['color_bottom']
-    if 'cluster_assignment' in series.index:
-        cluster = series['cluster_assignment']
-    else:
-        cluster = 'NA'
+    cluster = series['cluster_assignment'] if 'cluster_assignment' in series else np.NaN
 
     fig.add_trace(go.Scatter(x=[start, start, end, end],
                   y=[mu_min + sigma, mu_min - sigma, mu_min - sigma, mu_min + sigma],
@@ -142,7 +141,7 @@ def make_cnv_scatter(series, fig, col_names, lw=0.015, row_num=1, sigmas=False):
                   text=f'chr{series["Chromosome"]}:{series["Start.bp"]}-{series["End.bp"]}; '
                        f'CN Minor: {mu_min:.2f} +-{sigma:.4f}; '  # todo make original, so no updating needed
                        f'Cluster: {cluster}; '
-                       f'Length: {series["length"]:.2e} ({series["n_probes"]} probes)',
+                       f'Length: {length:.2e} ({n_probes} probes)',
                   showlegend=False), row=row_num, col=1)
     fig.add_trace(go.Scatter(x=[start, start, end, end],
                   y=[mu_maj + lw, mu_maj - lw, mu_maj - lw, mu_maj + lw],
@@ -151,7 +150,7 @@ def make_cnv_scatter(series, fig, col_names, lw=0.015, row_num=1, sigmas=False):
                   text=f'chr{series["Chromosome"]}:{series["Start.bp"]}-{series["End.bp"]}; '
                        f'CN Major: {mu_maj:.2f} +-{sigma:.4f}; '  # todo make original so no updating needed
                        f'Cluster: {cluster}; '
-                       f'Length: {series["length"]:.2e} ({series["n_probes"]} probes)',
+                       f'Length: {length:.2e} ({n_probes} probes)',
                   showlegend=False), row=row_num, col=1)
 
 
