@@ -102,7 +102,7 @@ def breakpoint_distance(file_control=None, file_case=None, seg_df_control=None, 
 
     fig = px.scatter(diff_df_stacked, x='bp_size', y='mu_diff', color='homolog', facet_col='bp_type', hover_data=['chrom', 'start', 'end'])
 
-    return fig, diff_df.groupby('bp_type').size()
+    return fig, diff_df.groupby('bp_type')['bp_size'].describe()
 
 
 def mu_sigma_difference(file_1=None, file_2=None, seg_df_1=None, seg_df_2=None, mu_lim=None, sigma_lim=None):
@@ -124,7 +124,7 @@ def mu_sigma_difference(file_1=None, file_2=None, seg_df_1=None, seg_df_2=None, 
 
     # get differences, with non-overlapping segments removed (this can be visualized better using acr_compare tool)
     diff_df = pd.concat([get_differences_from_intervals(tree, i+1, sample_names=[seg_df_1.loc[0, 'Sample_ID'],
-                                                                                     seg_df_2.loc[0, 'Sample_ID']])
+                                                                                 seg_df_2.loc[0, 'Sample_ID']])
                          for i, tree in enumerate(contig_trees)])
 
     fig, ax = plt.subplots(1, 1)
@@ -154,14 +154,8 @@ def mu_sigma_difference(file_1=None, file_2=None, seg_df_1=None, seg_df_2=None, 
     ax.set_title('Comparison of CNV Profiles')
 
     # legend
-    size_list = np.arange(0, max_length, np.ceil(max_length / 5))
-    handles = [
-        plt.scatter([-1], [-1], s=length / max_length * 100 + 3, c='gray')
-        for length
-        in size_list]
-    labels = ["{:.2e}bp".format(length) for length in size_list]
-    ax.legend(handles, labels, loc=3, framealpha=1, frameon=True, title='Segment Length')
-    # fig.show()
+    plt.legend(*pcm.legend_elements("sizes", num=5, func=lambda x: (x - 3) * max_length / 100, fmt="{x:.1e}bp"), loc=3)
+    fig.show()
 
     return fig, ax
 
