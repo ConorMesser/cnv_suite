@@ -7,6 +7,17 @@ import plotly.graph_objects as go
 
 def plot_acr_static(seg_df, ax, csize,
              segment_colors='difference', sigmas=True, min_seg_lw=2, y_upper_lim=2):
+    """Create static Allelic Copy Ratio plot for given segment profile.
+
+    :param seg_df: pandas.DataFrame with segment profile (allelic CN mu and sigmas)
+    :param ax: matplotlib Figure axes
+    :param csize: dict with chromosome sizes, as {contig_name: size}
+    :param segment_colors: color specification for segments. One of [black, difference (default), cluster, or blue_red (any other input)].
+    :param sigmas: boolean, True (default) if segments should have heights determined by sigma values
+    :param min_seg_lw: Segment line_width (for all segments if sigmas=False or minimum if sigmas=True); default=2
+    :param y_upper_lim: yaxis upper limit; default=2
+    :return: None (modifies given figure.axes)
+    """
     seg_df, chr_order, chrom_start, col_names = prepare_df(seg_df, csize, suffix='.bp')
     add_background(ax, chr_order, csize, height=7)
 
@@ -67,6 +78,18 @@ def plot_acr_static(seg_df, ax, csize,
 
 def plot_acr_interactive(seg_df, fig, csize,
                          segment_colors='difference', sigmas=True, min_seg_lw=0.015, y_upper_lim=2, row=0):
+    """Create interactive plotly Allelic Copy Ratio plot for given segment profile.
+
+    :param seg_df: pandas.DataFrame with segment profile (allelic CN mu and sigmas)
+    :param fig: plotly Figure; must be a subplots Figure (created with plotly.subplots.make_subplots())
+    :param csize: dict with chromosome sizes, as {contig_name: size}
+    :param segment_colors: color specification for segments. One of [black, difference (default), cluster, or blue_red (any other input)].
+    :param sigmas: boolean, True (default) if segments should have heights determined by sigma values
+    :param min_seg_lw: Segment line_width (for all segments if sigmas=False or minimum if sigmas=True); default=0.015
+    :param y_upper_lim: yaxis upper limit; default=2
+    :param row: row in subplots Figure to place plot; default=0
+    :return: (trace start num, trace end num) for later modification; additionally modifies given Figure
+    """
     # fig should have background set to white
     seg_df, chr_order, chrom_start, col_names = prepare_df(seg_df, csize, suffix='.bp')
     add_background(fig, chr_order, csize, row=row+1)
@@ -113,6 +136,16 @@ def plot_acr_interactive(seg_df, fig, csize,
 
 
 def make_cnv_scatter(series, fig, col_names, lw=0.015, row_num=1, sigmas=False):
+    """Add segment to figure as Scatter traces
+
+    :param series: pandas.Series for single segment
+    :param fig: plotly.Figure
+    :param col_names: dictionary specifying correct column names, as {generic_name: name_in_series}
+    :param lw: Segment line_width (for all segments if sigmas=False or minimum if sigmas=True); default=0.015
+    :param row_num: specified row (1-index)
+    :param sigmas: boolean, True if segments should have heights determined by sigma values; default = False
+    :return: None (modifies given Figure)
+    """
     start = series['genome_start']
     end = series['genome_end']
     mu_maj = series[col_names['mu_major']]
@@ -155,9 +188,18 @@ def make_cnv_scatter(series, fig, col_names, lw=0.015, row_num=1, sigmas=False):
 
 
 def update_cnv_scatter_cn(fig, major, minor, sigma, start_trace, end_trace, lw=0.015):
-    """Updates y values for CNV traces from start_trace to end_trace given by major/minor lists.
+    """Updates y values for CNV traces from start_trace to end_trace given by major/minor lists (optionally change line width also).
 
-    Critical that original traces were added in order: minor (sigma), major (sigma), minor, major"""
+    Critical that original traces were added in order: minor (sigma), major (sigma), minor, major as performed in make_cnv_scatter method
+    :param fig: plotly.Figure
+    :param major: array-like, new major allele mu values
+    :param minor: array-like, new minor allele mu values
+    :param sigma: array-like, new sigma values
+    :param start_trace: which trace to begin with in Figure
+    :param end_trace: which trace to end with in Figure
+    :param lw: Segment line_width (for all segments if sigmas=False or minimum if sigmas=True); default=0.015
+    :return: None
+    """
     assert end_trace - start_trace == len(major) * 4 and len(major) == len(minor) == len(sigma)
 
     for i, (minor_val, major_val, sigma) in enumerate(zip(minor, major, sigma)):
@@ -168,6 +210,15 @@ def update_cnv_scatter_cn(fig, major, minor, sigma, start_trace, end_trace, lw=0
 
 
 def update_cnv_scatter_color(fig, color_minor, color_major, start_trace, end_trace):
+    """Updates colors of the segments, based on given arrays and trace numbers.
+    
+    :param fig: plotly.Figure
+    :param color_minor: array-like, new minor allele color values
+    :param color_major: array-like, new major allele color values
+    :param start_trace: which trace to begin with in Figure
+    :param end_trace: which trace to end with in Figure
+    :return: None
+    """
     assert end_trace - start_trace == len(color_minor) * 4 == len(color_major) * 4
 
     for i, (minor_val, major_val) in enumerate(zip(color_minor, color_major)):
@@ -178,10 +229,25 @@ def update_cnv_scatter_color(fig, color_minor, color_major, start_trace, end_tra
 
 
 def update_cnv_scatter_sigma_toggle(fig, sigmas):
+    """Changes the visibility of the sigmas.
+    
+    :param fig: plotly.Figure
+    :param sigmas: boolean, True if segments should have heights determined by sigma values
+    :return: None
+    """
     fig.update_traces(dict(visible=sigmas), selector={'name': 'cnv_sigma'})
 
 
-def add_background(ax, chr_order, csize, height=10**7, row=1):
+def add_background(ax, chr_order, csize, height=100, row=1):
+    """Add background alternating gray/white bars to demarcate chromosomes.
+    
+    :param ax: matplotlib axes or plotly.Figure
+    :param chr_order: contig names in order as list
+    :param csize: dict with chromosome sizes, as {contig_name: size}
+    :param height: height of bars, default=100
+    :param row: specified row (1-index); only used if plotly Figure given
+    :return: None
+    """
     base_start = 0
     chrom_ticks = []
     patch_color = 'white'
@@ -199,6 +265,13 @@ def add_background(ax, chr_order, csize, height=10**7, row=1):
 
 
 def calc_color(seg_df, major, minor):
+    """Calculate major/minor allele colors based on the difference between them
+    
+    :param seg_df: pandas.DataFrame with segment data
+    :param major: column name for mu_major
+    :param minor: column name for mu_minor
+    :return: (array of minor allele colors, array of major allele colors)
+    """
     from matplotlib import colors
     cmap = colors.LinearSegmentedColormap.from_list("", ["blue", "purple", "red"])
     color_bottom = seg_df.apply(lambda x: colors.rgb2hex(cmap(
@@ -211,10 +284,21 @@ def calc_color(seg_df, major, minor):
 
 
 def scale_diff(mu_diff):
+    """Transforms distance between alleles for use in color formula    
+    :param mu_diff: Distance between alleles
+    :return: Transformed value
+    """
     return (7*mu_diff**2) / (7*mu_diff**2 + 10)
 
 
 def prepare_df(df, csize, suffix='.bp'):
+    """Preparation of dataframe for use (adding genome_position), collecting column names, and chromosome starting positions
+    
+    :param df: pandas.DataFrame segment profile
+    :param csize: dict with chromosome sizes, as {contig_name: size}
+    :param suffix: suffix on "Start" and "End" position columns
+    :return: (modified_segment_df, chromosome_order_list, chromsome_start_dict, column_names_dict)
+    """
     # discover columns
     if 'mu.major' in df.columns:
         col_names = dict(
@@ -254,6 +338,7 @@ def get_hex_string(c):
 
 
 def get_phylogic_color_scale():
+    """Generate dictionary defining phylogic cluster colors."""
     phylogic_color_list = [[166, 17, 129],
                            [39, 140, 24],
                            [103, 200, 243],

@@ -292,7 +292,7 @@ class CNV_Profile:
         :param cov_binned: tsv file with binned coverage for genome
         :param x_coverage: optional integer to overwrite cov_binned coverage values with Log-Normal Poisson values with lambda=x_coverage
         :param sigma: optional value for Log-Normal sigma value
-        :return:
+        :return: pandas.DataFrame with coverage data corrected for given purity and this CN profile
 
         Needs to take in the cnv profile and the purity as well:
         - The x_coverage is relative to a local ploidy of 2. Given the CN profile, it may be more or less than that.
