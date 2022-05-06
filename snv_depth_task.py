@@ -20,61 +20,13 @@ class CallDepth(wolf.Task):
         "bam": None,
         "bai": None,
         "bed": None,
-        "index_start": 1,
-        "index_end": 40000000000,  # 40 billion is greater than number of bases in whole genome
         "extra_flags": "-s -a"
     }
     script = """
-    true_end=$(( `wc -l < ${bed} | xargs` < ${index_end} ? `wc -l < ${bed} | xargs` : ${index_end} ))
-    sed -n "${index_start},${true_end}p" ${bed} > scatter.bed
-    samtools depth -b scatter.bed ${extra_flags} ${bam} > coverage.bed
+    samtools view -M -L scatter.bed -u ${bam} | samtools depth -b scatter.bed ${extra_flags} -o coverage.bed - 
     """
     output_patterns = {"coverage": "coverage.bed"}
     docker = "gcr.io/broad-getzlab-workflows/base_image:v0.0.5"
-
-
-def depth_workflow(bed, scatter_num=100, bam=None, bai=None, tumor_bam_localization=None):
-    assert (bam and bai) or tumor_bam_localization
-    
-    if not tumor_bam_localization:
-        tumor_bam_localization = wolf.localization.LocalizeToDisk(
-            files={
-                "bam": bam,
-                "bai": bai
-            })
-    
-    # split bed file into scatter_num even partitions
-    bed_df = pd.read_csv(bed, sep='\t')
-    line_num = bed_df.shape[0]
-    start_indices = np.linspace(1, line_num+1, num=min(line_num, scatter_num)+1, dtype=int)
-    end_indices = start_indices - 1
-    start_indices = start_indices[:-1].tolist()
-    end_indices = end_indices[1:].tolist()
-    
-    # could also call split_intervals task but probably unnecessary because each interval is only 1 bp long
-
-    snv_depth = CallDepth(
-        name="get_read_depths",
-        inputs={
-            "bam": tumor_bam_localization['bam'],
-            "bai": tumor_bam_localization['bai'],
-            "bed": bed,
-            "index_start": start_indices,
-            "index_end": end_indices
-        }
-    )
-    
-    ### todo filter/take subset based on exome bait intervals
-    
-    if not tumor_bam_localization:
-        DeleteDisk(
-          inputs = {
-            "disk" : [tumor_bam_localization["bam"]],
-            "upstream" : snv_depth["coverage"]
-          }
-        )
-    
-    return snv_depth
 
 
 def coverage_workflow(scatter_num=100, bam=None, bai=None, bed_path=None, interval_size=None, coverage_resources=None, tumor_bam_localization=None, genome_file=None):
@@ -88,67 +40,37 @@ def coverage_workflow(scatter_num=100, bam=None, bai=None, bed_path=None, interv
             bai = bai
           ))
     
-    # Partition the padded WES intervals list into even parts
-    if bed_path and genome_file:
-        
-        #@prefect.task
-        def partition_wes_intervals(bed_path, genome_file, scatter_num):
-            bed_df = pd.read_csv(bed_path, sep='\t', header=None, names=['chr', 'start', 'end'], dtype={0: str, 1: int, 2: int})
-            bed_df['len'] = bed_df['end'] - bed_df['start']
-            scatter_num = scatter_num
-            import numpy as np
-            num_partitions_chr  = np.ceil(bed_df.groupby('chr')['len'].sum() / bed_df['len'].sum() * scatter_num)
-            intervals_out = []
-            for c, i in num_partitions_chr.items():
-                this_chr_bed = bed_df.loc[bed_df['chr'] == c].reset_index()
-                approx_partition_len = this_chr_bed['len'].sum() / i
+    # Partition the genome into
+    split_intervals_task = wolf.ImportTask(
+      task_path = "git@github.com:getzlab/split_intervals_TOOL.git",
+      task_name = "split_intervals"
+    )
 
-                start = this_chr_bed.iloc[0]['start']
-                len_cum = 0
-                for num, row in this_chr_bed.iterrows():
-                    len_cum += row['len']
-                    if num == this_chr_bed.shape[0] - 1:
-                        intervals_out.append([c, start, row['end'] + 1])
-                    elif len_cum > approx_partition_len:
-                        intervals_out.append([c, start, row['end'] + 1])
-                        start = this_chr_bed.iloc[num+1]['start']
-                        len_cum = 0
-                        
-            return pd.DataFrame(intervals_out, columns=['chr', 'start', 'end'])
+    split_intervals = split_intervals_task.split_intervals(
+      bam = tumor_bam_localization["bam"],
+      bai = tumor_bam_localization["bai"],
+      interval_type = "bed",
+      N = scatter_num,
+      selected_chrs = [f'chr{i}' for i in range(1, 23)] + ['chrX', 'chrY']
+    )
 
-        subset_intervals = partition_wes_intervals(bed_path, genome_file, scatter_num)
+    # shim task to transform split_intervals files into subset parameters for covcollect task
+    @prefect.task
+    def interval_gather(interval_files):
+        ints = []
+        for f in interval_files:
+            ints.append(pd.read_csv(f, sep = "\t", header = None, names = ["chr", "start", "end"]))
+        return pd.concat(ints).sort_values(["chr", "start", "end"])
 
-    else:  # for wgs or wes if genome file not provided
-        split_intervals = wolf.ImportTask(
-          task_path = "git@github.com:getzlab/split_intervals_TOOL.git",
-          task_name = "split_intervals"
-        )
-
-        split_intervals_task = split_intervals.split_intervals(
-          bam = tumor_bam_localization["bam"],
-          bai = tumor_bam_localization["bai"],
-          interval_type = "bed",
-          N = scatter_num,
-          selected_chrs = [f'chr{i}' for i in range(1, 23)] + ['chrX', 'chrY']
-        )
-
-        # shim task to transform split_intervals files into subset parameters for covcollect task
-        #@prefect.task
-        def interval_gather(interval_files):
-            ints = []
-            for f in interval_files:
-                ints.append(pd.read_csv(f, sep = "\t", header = None, names = ["chr", "start", "end"]))
-            return pd.concat(ints).sort_values(["chr", "start", "end"])
-
-        subset_intervals = interval_gather(split_intervals_task["interval_files"])
+    subset_intervals = interval_gather(split_intervals["interval_files"])
 
     # get coverage
-    cov_collect = wolf.ImportTask(
+    cov_collect_task = wolf.ImportTask(
       task_path = "git@github.com:getzlab/covcollect.git",
       task_name = "covcollect"
     )
 
-    cov_collect_task = cov_collect.Covcollect(
+    cov_collect = cov_collect_task.Covcollect(
       inputs = dict(
         bam = tumor_bam_localization["bam"],
         bai = tumor_bam_localization["bai"],
@@ -164,7 +86,7 @@ def coverage_workflow(scatter_num=100, bam=None, bai=None, bed_path=None, interv
     # gather coverage
     cov_gather = wolf.Task(
       name = "gather_coverage",
-      inputs = { "coverage_beds" : [cov_collect_task["coverage"]] },
+      inputs = { "coverage_beds" : [cov_collect["coverage"]] },
       script = """cat $(cat ${coverage_beds}) > coverage_cat.bed""",
       outputs = { "coverage" : "coverage_cat.bed" }
     )
@@ -236,7 +158,7 @@ class DownSampleBam(wolf.Task):
     docker = "gcr.io/broad-getzlab-workflows/base_image:v0.0.5"
     
     
-def full_simulation_workflow(bam, bai, vcf_bed, cnv_pickle, purity,
+def full_simulation_workflow(bam, bai, input_vcf, cnv_pickle, purity,
                              scatter_num_cov=100, scatter_num_depth=100, 
                              wes_target_intervals=None, interval_size=None, 
                              coverage_resources=None, desired_coverage=None):
@@ -276,8 +198,14 @@ def full_simulation_workflow(bam, bai, vcf_bed, cnv_pickle, purity,
     
     #
     # Run SNV Depth workflow, calling samtools depth on every site in given VCF bed file
-    snv_depth_results = depth_workflow(vcf_to_bed(input_vcf), scatter_num=scatter_num_depth, tumor_bam_localization=tumor_bam_localization)        
-    
+    snv_depth_results = CallDepth(
+        name="get_read_depths",
+        inputs={
+            "bam": tumor_bam_localization['bam'],
+            "bai": tumor_bam_localization['bai'],
+            "bed": vcf_to_bed(input_vcf),
+        }
+    )
     
     #
     # Create CNV Profile based on given cnv_pickle and save Coverage and VCF files for given purity
@@ -311,7 +239,9 @@ def full_simulation_workflow(bam, bai, vcf_bed, cnv_pickle, purity,
         VCF_file = input_vcf,
         tumor_allele_counts = cnv_profile_results["coverage"],
         # todo get normal
-        # normal_allele_counts = cnv_profile_results["coverage"]
+        # normal_allele_counts = cnv_profile_results["normal_coverage"]
+        # normal_allele_counts = cnv_profile_results["normal_coverage"]
+
         
         # need to add in hapaseg_load_snps_task["allele_counts"] rather than using callstats/mutect
 )
