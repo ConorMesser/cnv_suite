@@ -141,14 +141,15 @@ class DownSampleBam(wolf.Task):
         END { print read_len*n_reads/cov_size }')
     fi
 
-    PROPORTION=$(echo "scale=4 ; $desired_coverage / $COV" | bc)
+    PROPORTION=`awk -v a="$desired_coverage" -v b="$COV" 'BEGIN {printf a/b }' </dev/null`
     
-    if [ `echo "$PROPORTION > 1.0" | bc` == 1 ]
-    then
+    if awk -v prop="$PROPORTION" 'BEGIN { exit (prop < 1.0) }' /dev/null
+    then  # inverted exit conditions (prop >= 1.0)
         echo "Desired Coverage of ${desired_coverage}x is $PROPORTION times the current bam coverage. Using original bam."
-        cat $bam > downsample.bam
-    else
-        samtools view $bam -h -s (echo $prop + $seed | bc) > downsample.bam  # -s INT.FRAC where INT is seed, FRAC is proportion of reads
+        samtools view $bam -h -o downsample.bam
+    else  # prop < 1.0
+        INT_FRAC=`awk -v prop="$PROPORTION" -v seed="$subsample_seed" 'BEGIN {printf prop + seed }' </dev/null`
+        samtools view $bam -h -s $INT_FRAC -o downsample.bam  # -s INT.FRAC where INT is seed, FRAC is proportion of reads
     fi
     
     samtools index downsample.bam downsample.bam.bai
@@ -159,7 +160,7 @@ class DownSampleBam(wolf.Task):
     
     
 def full_simulation_workflow(bam, bai, input_vcf, cnv_pickle, purity,
-                             scatter_num_cov=100, scatter_num_depth=100, 
+                             scatter_num_cov=100,
                              wes_target_intervals=None, interval_size=None, 
                              coverage_resources=None, desired_coverage=None):
     #
@@ -209,42 +210,42 @@ def full_simulation_workflow(bam, bai, input_vcf, cnv_pickle, purity,
     
     #
     # Create CNV Profile based on given cnv_pickle and save Coverage and VCF files for given purity
-    cnv_profile_results = simulate_cnv_profile.Simulate_Profile(
-        inputs = dict(
-            cnv_pickle = cnv_pickle,
-            purity = purity,
-            coverage_file = coverage_results["coverage"],
-            vcf_file = input_vcf,
-            read_depths = snv_depth_results["coverage"]
-        )
-    )
+#     cnv_profile_results = simulate_cnv_profile.Simulate_Profile(
+#         inputs = dict(
+#             cnv_pickle = cnv_pickle,
+#             purity = purity,
+#             coverage_file = coverage_results["coverage"],
+#             vcf_file = input_vcf,
+#             read_depths = snv_depth_results["coverage"]
+#         )
+#     )
     
     #
     # Run HapASeg pipeline
     #
-    hapaseg_results = hapaseg_workflow.workflow(
-  callstats_file = None,
+#     hapaseg_results = hapaseg_workflow.workflow(
+#   callstats_file = None,
 
-  tumor_coverage_bed = None,
-  normal_coverage_bed = None,
+#   tumor_coverage_bed = None,
+#   normal_coverage_bed = None,
 
-  ref_genome_build='hg38', #must be hg19 or hg38
+#   ref_genome_build='hg38', #must be hg19 or hg38
   
-  target_list = None,
-  localization_token='',
+#   target_list = None,
+#   localization_token='',
 
-  num_cov_seg_samples=5,
+#   num_cov_seg_samples=5,
 
-  persistant_dry_run = False,
-        VCF_file = input_vcf,
-        tumor_allele_counts = cnv_profile_results["coverage"],
-        # todo get normal
-        # normal_allele_counts = cnv_profile_results["normal_coverage"]
-        # normal_allele_counts = cnv_profile_results["normal_coverage"]
+#   persistant_dry_run = False,
+#         VCF_file = input_vcf,
+#         tumor_allele_counts = cnv_profile_results["coverage"],
+#         # todo get normal
+#         # normal_allele_counts = cnv_profile_results["normal_coverage"]
+#         # normal_allele_counts = cnv_profile_results["normal_coverage"]
 
         
-        # need to add in hapaseg_load_snps_task["allele_counts"] rather than using callstats/mutect
-)
+#         # need to add in hapaseg_load_snps_task["allele_counts"] rather than using callstats/mutect
+# )
     
     #
     # Compare results to true copy number profile
@@ -254,7 +255,7 @@ def full_simulation_workflow(bam, bai, input_vcf, cnv_pickle, purity,
     DeleteDisk(
         inputs = {
         "disk" : [tumor_bam_localization["bam"]],
-        "upstream" : cov_collect_task["coverage"]
+        "upstream" : [coverage_results["coverage"], snv_depth_results["coverage"]]
         }
     )
     
