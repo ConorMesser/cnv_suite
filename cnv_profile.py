@@ -425,7 +425,7 @@ class CNV_Profile:
         if purity == 1:
             self.cnv_profile_df.to_csv(filename, sep='\t', index=False)
         else:
-            pass
+            pass  # todo
 
 
 def get_alt_count(m_prop, p_prop, m_present, p_present, coverage, correct_phase):
@@ -629,4 +629,26 @@ def switch_contigs(input_data):
         return input_data
     else:
         raise ValueError(f'Only dictionaries and pandas DataFrames supported. Not {type(input_data)}.')
+
+
+if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Get coverage and VCF outputs based on a simulated CNV profile')
+    parser.add_argument("cnv_pickle", help='CNV_Profile object as a pickle file')
+    parser.add_argument("coverage_file", help='Bed file giving coverage over bins or intervals')
+    parser.add_argument("vcf_file", help='VCF file for this (simulated) participant')
+    parser.add_argument("read_depths", help='Depths at SNPs given in VCF file, as a bed file')
+    parser.add_argument("purity", help='Desired tumor purity')
+    parser.add_argument("-oc", "--output_coverage", default='simulated_coverage.txt')
+    parser.add_argument("-oh", "--output_hets", default='simulated_hets.txt')
+
+    # todo add ability to get normal coverage/depths
+
+    args = parser.parse_args()
+
+    cnv_object = pickle.load(open(args['cnv_pickle']))
+    cnv_object.save_coverage_file(args["coverage_filename"], args["purity"], args["coverage_file"])
+    cnv_object.save_hets_file(args["hets_filename"], args["vcf_file"], args["read_depths"], args["purity"])
+
 
