@@ -1,3 +1,5 @@
+#!/bin/bash/env python3
+
 import pandas as pd
 import numpy as np
 from intervaltree import Interval, IntervalTree
