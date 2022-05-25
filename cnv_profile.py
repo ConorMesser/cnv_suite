@@ -114,7 +114,7 @@ class CNV_Profile:
     def add_arm(self, cluster_num, p_whole=0.5, p_q=0.5, chrom=None, p_deletion=0.6, allele=None):
         """Add an arm level copy number event to the profile given the specifications.
 
-        todo: don't homo-delete whole arm """
+        Will not add an arm-level homozygous deletion."""
         if not chrom:
             chrom = choice(list(self.csize.keys()))
         start = 1
@@ -147,6 +147,8 @@ class CNV_Profile:
             for o in other_int:
                 weighted_del += o.data.cn_change == 0 * (o.end - o.begin) / (end - start)
             deletion_adjust = 0 if weighted_del > 0.3 else 1
+            if deletion_adjust == 0:
+                print(f'Homozygous deletion will not be added for chrom {chrom}.')
 
             if np.random.rand() < 0.3:  # delete fully
                 for i in desired_int:
@@ -308,7 +310,7 @@ class CNV_Profile:
         cnv_df = []
         phasing_df = []
 
-        for chrom, profile_tree in self.event_trees.items():  # change this todo
+        for chrom, profile_tree in self.event_trees.items():
             cnv_df.append(profile_tree.get_cnv_df(self.cnv_trees[chrom][0], self.cnv_trees[chrom][1]))
             phasing_df.append(profile_tree.get_phased_df(self.cnv_trees[chrom][0], self.cnv_trees[chrom][1]))
 
@@ -334,8 +336,10 @@ class CNV_Profile:
 
         if not sigma:
             sigma = 1
-        x_coverage_df = pd.read_csv(cov_binned, sep='\t', names=['chrom', 'start', 'end', 'covcorr', 'covraw'],
-                                    dtype={'chrom': str, 'start': int, 'end': int}, header=None)
+        x_coverage_df = pd.read_csv(cov_binned, sep='\t', names=['chrom', 'start', 'end', 'covcorr',
+                                                                 'mean_fraglen', 'sqrt_avg_fragvar', 'n_reads'],
+                                    dtype={'chrom': str, 'start': int, 'end': int, 'covcorr': int,
+                                           'mean_fraglen': int, 'sqrt_avg_fragvar': int, 'n_reads': int}, header=None)
         
         # change contigs to [0-9]+ from chr[0-9XY]+ in input file
         x_coverage_df = switch_contigs(x_coverage_df)
@@ -353,7 +357,7 @@ class CNV_Profile:
                                                      x_coverage_df['maternal_ploidy'].values,
                                                      purity)
 
-        if x_coverage:  # is it okay to apply LNP to binned coverage? todo
+        if x_coverage:
             dispersion_norm = np.random.normal(0, sigma, x_coverage_df.shape[0])
             binned_coverage = x_coverage * (x_coverage_df['end'] - x_coverage_df['start']) / 2
             this_chr_coverage = np.asarray([np.random.poisson(cov + np.exp(disp)) for cov, disp in
@@ -364,10 +368,7 @@ class CNV_Profile:
         x_coverage_df['covcorr_original'] = x_coverage_df['covcorr']
         x_coverage_df['covcorr'] = np.floor(x_coverage_df['covcorr'].values * x_coverage_df['ploidy'].values / 2).astype(int)
 
-        x_coverage_df['covraw_original'] = x_coverage_df['covraw']
-        x_coverage_df['covraw'] = np.floor(x_coverage_df['covraw'].values * x_coverage_df['ploidy'].values / 2).astype(int)
-
-        return x_coverage_df[['chrom', 'start', 'end', 'covcorr', 'covraw', 'ploidy', 'covcorr_original', 'covraw_original']]
+        return x_coverage_df[['chrom', 'start', 'end', 'covcorr', 'mean_fraglen', 'sqrt_avg_fragvar', 'n_reads', 'ploidy', 'covcorr_original']]
 
     def save_coverage_file(self, filename, purity, cov_binned_file, x_coverage=None, sigma=None):
         """Generate coverage for given purity and binned coverage file and save output to filename"""
@@ -385,7 +386,16 @@ class CNV_Profile:
             print('cnv_trees not computed yet. Run calculate_profiles() before generating snvs.')
             return None, None
 
-        # todo should check that the vcf header (chrs and chr lengths) match with self.chr
+        # check if VCF contigs given in header match contigs and lengths in self
+        vcf_contigs = switch_contigs(get_contigs_from_header(vcf))
+        vcf_contigs_pertinent = {k: v for k, v in vcf_contigs.items() if k in self.csize.keys()}
+        if vcf_contigs_pertinent.keys() != self.csize.keys():
+            print(f'WARNING: Not all defined contigs exist in VCF file. '
+                  f'Missing contigs: {set(self.csize.keys()) - set(vcf_contigs_pertinent.keys())}')
+        for k, v in vcf_contigs_pertinent.items():
+            if v != self.csize[k]:
+                print(f'WARNING: Contig length for chrom {k} in VCF file does not match CNV Profile '
+                      f'({v} vs. {self.csize[k]}).')
                 
         snv_df = pd.read_csv(vcf, sep='\t', comment='#', header=None, 
                      names=['CHROM','POS','ID','REF','ALT','QUAL','FILTER','INFO','FORMAT','NA12878'])
@@ -395,7 +405,7 @@ class CNV_Profile:
         snv_df = switch_contigs(snv_df)
         bed_df = switch_contigs(bed_df)
         
-        snv_df = snv_df.merge(bed_df, on=['CHROM', 'POS'])
+        snv_df = snv_df.merge(bed_df, on=['CHROM', 'POS'], how='right')
         
         pandarallel.initialize()
         snv_df['paternal_ploidy'] = snv_df.parallel_apply(
@@ -497,6 +507,24 @@ def single_allele_ploidy(allele, start, end):
     else:
         interval_totals = [(min(i.end, end) - max(i.begin, start)) * i.data[3] for i in intervals]
         return sum(interval_totals) / (end - start)
+
+
+def get_contigs_from_header(vcf_fn):
+    contig_dict = {}
+    with open(vcf_fn, "r") as vcf:
+        pre_contig = True
+        post_contig = False
+        while not post_contig:
+            line = vcf.readline()
+            re_groups = re.search("##(?P<id>[a-zA-Z0-9]+)=(?P<value>.*)", line)
+            if re_groups.group('id') == 'contig':
+                pre_contig = False
+                contig_groups = re.search("<ID=(?P<name>[chrXY0-9]+),length=(?P<len>[0-9]+)>", re_groups.group('value'))
+                contig_dict[contig_groups.group('name')] = int(contig_groups.group('len'))
+            elif not pre_contig:
+                post_contig = True
+
+    return contig_dict
 
 
 class Chromosome:
