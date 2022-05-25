@@ -1,3 +1,6 @@
+#!/bin/bash/env python3
+
+import os.path
 import pandas as pd
 import numpy as np
 from intervaltree import Interval, IntervalTree
@@ -15,6 +18,14 @@ Event = namedtuple("Event", ['type', 'allele', 'cluster_num', 'cn_change'])
 class CNV_Profile:
 
     def __init__(self, num_subclones=3, csize=None, cent_loc=None):
+        """Create a simulated CNV profile, built with random Phylogeny and copy number alterations.
+
+        :param num_subclones: Desired number of phylogenetic subclones, as an int.
+        :param csize: Chromosome sizes, given as dict('chr': size), genome or bed file path, or
+            pandas DataFrame with columns 'chr', 'len'; default is hg19 chr sizes.
+        :param cent_loc: Location of centromeres, given as dict('chr': loc), tsv file, or
+            pandas DataFrame with columns 'chr', 'pos'; default is halfway point of chromosomes.
+        """
         if not csize:
             csize = {'1': 249250621, '2': 243199373, '3': 198022430, '4': 191154276, '5': 180915260,
                      '6': 171115067, '7': 159138663, '8': 146364022, '9': 141213431, '10': 135534747,
@@ -22,8 +33,9 @@ class CNV_Profile:
                      '16': 90354753, '17': 81195210, '18': 78077248, '19': 59128983, '20': 63025520,
                      '21': 48129895, '22': 51304566, '23': 156040895, '24': 57227415}
         elif type(csize) != dict:
-            if type(csize) == str:
-                if csize[-3:] == 'bed':
+            if type(csize) == str and os.path.exists(csize):
+                _, ext = os.path.splitext(csize)
+                if ext == '.bed':
                     columns = ['chr', 'start', 'len']  # three columns if bed file
                 else:
                     columns = ['chr', 'len']
@@ -36,9 +48,9 @@ class CNV_Profile:
             csize = csize_df.to_dict()['len']
         
         if not cent_loc:
-            cent_loc = {chrom: int(size / 2) for chrom, size in csize.items()}  # todo change
+            cent_loc = {chrom: int(size / 2) for chrom, size in csize.items()}
         elif type(cent_loc) != dict:
-            if type(cent_loc) == str:
+            if type(cent_loc) == str and os.path.exists(csize):
                 cent_loc_df = pd.read_csv(cent_loc, sep='\t', header=None, names=['chr', 'pos'])
             elif type(cent_loc) == pd.DataFrame:
                 cent_loc_df = cent_loc.copy()
@@ -73,7 +85,15 @@ class CNV_Profile:
                        chromothripsis=False, wgd=False):
         """General helper to add CNV events according to criteria.
         
-        Whole genome doubling and chromothripsis both applied as final clonal events if specified."""
+        Whole genome doubling and chromothripsis both applied as final clonal events if specified.
+
+        :param arm_num: total number of arm level events
+        :param focal_num: total number of focal level events
+        :param p_whole: probability of whole-chromosome (vs. arm-level) CN event, given as float between [0, 1]
+        :param ratio_clonal: ratio of clonal events out of all events, given as float between [0, 1]
+        :param median_focal_length: median length of focal CN events; default is 1.8 Mb
+        :param chromothripsis: boolean if clonal Chromothripsis event is desired; default False
+        :param wgd: boolean if clonal Whole Genome Doubling event is desired; default False"""
         # add clonal events
         for _ in np.arange(arm_num * ratio_clonal):
             self.add_arm(1, p_whole)
@@ -92,9 +112,9 @@ class CNV_Profile:
                 self.add_focal(cluster, median_focal_length)
 
     def add_arm(self, cluster_num, p_whole=0.5, p_q=0.5, chrom=None, p_deletion=0.6, allele=None):
-        """Add an arm level copy number event given the specifications.
+        """Add an arm level copy number event to the profile given the specifications.
 
-        todo: don't homo-delete whole arm """
+        Will not add an arm-level homozygous deletion."""
         if not chrom:
             chrom = choice(list(self.csize.keys()))
         start = 1
@@ -127,6 +147,8 @@ class CNV_Profile:
             for o in other_int:
                 weighted_del += o.data.cn_change == 0 * (o.end - o.begin) / (end - start)
             deletion_adjust = 0 if weighted_del > 0.3 else 1
+            if deletion_adjust == 0:
+                print(f'Homozygous deletion will not be added for chrom {chrom}.')
 
             if np.random.rand() < 0.3:  # delete fully
                 for i in desired_int:
@@ -140,7 +162,11 @@ class CNV_Profile:
             for i in desired_int:
                 self.event_trees[chrom].add_seg_interval('arm', cluster_num, i.data.cn_change, i)
 
-    def add_focal(self, cluster_num, median_focal_length=1.8 * 10**6, cnv_lambda=0.8, chrom=None, p_deletion=0.5, allele=None, position=None, cnv_level=None):
+    def add_focal(self, cluster_num, median_focal_length=1.8 * 10**6, cnv_lambda=0.8, chrom=None,
+                  p_deletion=0.5, allele=None, position=None, cnv_level=None):
+        """Add a focal copy number event to the profile, according to the specifications.
+
+        :returns (start_position, end_position), for ease of calling same (random) CN event on both alleles"""
         if not chrom:  # choose chromosome
             chrom = choice(list(self.csize.keys()))
 
@@ -180,7 +206,7 @@ class CNV_Profile:
         return start_pos, end_pos
 
     def add_wgd(self, cluster_num, both_alleles=True):
-        """Add whole genome doubling for specified cluster.
+        """Add whole genome doubling for the specified cluster.
 
         :return: None
         """
@@ -193,6 +219,7 @@ class CNV_Profile:
                 self.add_arm(cluster_num, 1, chrom=chrom, p_deletion=0, allele=alleles[1])
 
     def add_chromothripsis(self, cluster_num, chrom=None, cn_states=2, allele=None, num_events=None, median_focal_length=1.8 * 10**6):
+        """Add whole genome doubling for the specified cluster following specifications."""
         if not chrom:
             chrom = choice(list(self.csize.keys()))
         if not allele:  # assuming all events happen on single chromatid (allele)
@@ -236,8 +263,7 @@ class CNV_Profile:
     def add_cn_loh(self, cluster_num, p_whole=0.5, chrom=None, focal=False):
         """Add loss of heterozygosity event (deletion of one allele, amplification of the other)
 
-        Call add_arm (default) or add_focal (if focal attribute is set to True) twice, once for each allele. 
-        :cluster_num
+        Call add_arm (default) or add_focal (if focal attribute is set to True) twice, once for each allele.
         """
         alleles = ['paternal', 'maternal']
         shuffle(alleles)
@@ -261,9 +287,15 @@ class CNV_Profile:
             _, _ = self.add_focal(cluster_num, position=(start_pos, end_pos), chrom=chrom, p_deletion=1, allele=alleles[1])
 
     def calculate_cnv_lineage(self, chrom, start, end, cluster_num):
+        """Get the CNV intervals effecting this loci in this given cluster_num and its phylogenetic parents.
+
+        :returns (IntervalTree, IntervalTree): paternal CNV intervals, maternal CNV intervals"""
         return self.event_trees[chrom].calc_current_cnv_lineage(start, end, cluster_num, self.phylogeny)
 
     def calculate_profiles(self):
+        """Calculate CNV profiles based on the phylogeny and CNV events and generate CNV and phased dataframes.
+
+        Run after adding all relevant CNV events. Can always be run again to generate profiles again if new events are added. Must be run before generating coverage or snvs."""
         self._calculate_cnv_profile()
         self._calculate_df_profiles()
 
@@ -278,7 +310,7 @@ class CNV_Profile:
         cnv_df = []
         phasing_df = []
 
-        for chrom, profile_tree in self.event_trees.items():  # change this todo
+        for chrom, profile_tree in self.event_trees.items():
             cnv_df.append(profile_tree.get_cnv_df(self.cnv_trees[chrom][0], self.cnv_trees[chrom][1]))
             phasing_df.append(profile_tree.get_phased_df(self.cnv_trees[chrom][0], self.cnv_trees[chrom][1]))
 
@@ -294,20 +326,18 @@ class CNV_Profile:
         :param sigma: optional value for Log-Normal sigma value
         :return: pandas.DataFrame with coverage data corrected for given purity and this CN profile
 
-        Needs to take in the cnv profile and the purity as well:
+        Notes:
         - The x_coverage is relative to a local ploidy of 2. Given the CN profile, it may be more or less than that.
         - local_coverage = x_coverage * ploidy / 2 where ploidy = pur*(mu_min+mu_maj) + (1-pur)*2
-
-        :todo: speed-up
         """
         if self.cnv_trees is None:
             print('cnv_trees not computed yet. Run calculate_profiles() before generating coverage.')
             return None
 
-        if not sigma:
-            sigma = 1
-        x_coverage_df = pd.read_csv(cov_binned, sep='\t', names=['chrom', 'start', 'end', 'covcorr', 'covraw'],
-                                    dtype={'chrom': str, 'start': int, 'end': int}, header=None)
+        x_coverage_df = pd.read_csv(cov_binned, sep='\t', names=['chrom', 'start', 'end', 'covcorr',
+                                                                 'mean_fraglen', 'sqrt_avg_fragvar', 'n_reads'],
+                                    dtype={'chrom': str, 'start': int, 'end': int, 'covcorr': int,
+                                           'mean_fraglen': int, 'sqrt_avg_fragvar': int, 'n_reads': int}, header=None)
         
         # change contigs to [0-9]+ from chr[0-9XY]+ in input file
         x_coverage_df = switch_contigs(x_coverage_df)
@@ -315,17 +345,20 @@ class CNV_Profile:
         x_coverage_df = x_coverage_df[x_coverage_df['chrom'].isin(self.csize.keys())]
         
         pandarallel.initialize()
+        # bins in cov_collect bed file are inclusive, but end values should be exclusive to compare to intervals
         x_coverage_df['paternal_ploidy'] = x_coverage_df.parallel_apply(
-            lambda x: single_allele_ploidy(self.cnv_trees[x['chrom']][0], x['start'], x['end']),
+            lambda x: single_allele_ploidy(self.cnv_trees[x['chrom']][0], x['start'], x['end'] + 1),
             axis=1)
         x_coverage_df['maternal_ploidy'] = x_coverage_df.parallel_apply(
-            lambda x: single_allele_ploidy(self.cnv_trees[x['chrom']][1], x['start'], x['end']),
+            lambda x: single_allele_ploidy(self.cnv_trees[x['chrom']][1], x['start'], x['end'] + 1),
             axis=1)
         x_coverage_df['ploidy'] = get_average_ploidy(x_coverage_df['paternal_ploidy'].values,
                                                      x_coverage_df['maternal_ploidy'].values,
                                                      purity)
 
-        if x_coverage:  # is it okay to apply LNP to binned coverage? todo
+        if x_coverage:
+            if not sigma:
+                sigma = 1
             dispersion_norm = np.random.normal(0, sigma, x_coverage_df.shape[0])
             binned_coverage = x_coverage * (x_coverage_df['end'] - x_coverage_df['start']) / 2
             this_chr_coverage = np.asarray([np.random.poisson(cov + np.exp(disp)) for cov, disp in
@@ -336,21 +369,34 @@ class CNV_Profile:
         x_coverage_df['covcorr_original'] = x_coverage_df['covcorr']
         x_coverage_df['covcorr'] = np.floor(x_coverage_df['covcorr'].values * x_coverage_df['ploidy'].values / 2).astype(int)
 
-        x_coverage_df['covraw_original'] = x_coverage_df['covraw']
-        x_coverage_df['covraw'] = np.floor(x_coverage_df['covraw'].values * x_coverage_df['ploidy'].values / 2).astype(int)
-
-        return x_coverage_df[['chrom', 'start', 'end', 'covcorr', 'covraw', 'ploidy', 'covcorr_original', 'covraw_original']]
+        return x_coverage_df[['chrom', 'start', 'end', 'covcorr', 'mean_fraglen', 'sqrt_avg_fragvar', 'n_reads', 'ploidy', 'covcorr_original']]
 
     def save_coverage_file(self, filename, purity, cov_binned_file, x_coverage=None, sigma=None):
+        """Generate coverage for given purity and binned coverage file and save output to filename"""
         cov_df = self.generate_coverage(purity, cov_binned_file, x_coverage=x_coverage, sigma=sigma)
         cov_df.rename(columns={'chrom': 'chr'}).to_csv(filename, sep='\t', index=False)
 
     def generate_snvs(self, vcf, bed, purity):
+        """Generate SNV read depths adjusted for CNV profile (and purity), with phasing from vcf file.
+
+        :param vcf: VCF file containing SNVs and haplotype of SNVs
+        :param bed: bed file containing the read depths for all desired SNVs in original bam
+        :param purity: desired purity, given as float
+        """
         if self.cnv_trees is None:
             print('cnv_trees not computed yet. Run calculate_profiles() before generating snvs.')
             return None, None
 
-        # todo should check that the vcf header (chrs and chr lengths) match with self.chr
+        # check if VCF contigs given in header match contigs and lengths in self
+        vcf_contigs = switch_contigs(get_contigs_from_header(vcf))
+        vcf_contigs_pertinent = {k: v for k, v in vcf_contigs.items() if k in self.csize.keys()}
+        if vcf_contigs_pertinent.keys() != self.csize.keys():
+            print(f'WARNING: Not all defined contigs exist in VCF file. '
+                  f'Missing contigs: {set(self.csize.keys()) - set(vcf_contigs_pertinent.keys())}')
+        for k, v in vcf_contigs_pertinent.items():
+            if v != self.csize[k]:
+                print(f'WARNING: Contig length for chrom {k} in VCF file does not match CNV Profile '
+                      f'({v} vs. {self.csize[k]}).')
                 
         snv_df = pd.read_csv(vcf, sep='\t', comment='#', header=None, 
                      names=['CHROM','POS','ID','REF','ALT','QUAL','FILTER','INFO','FORMAT','NA12878'])
@@ -360,7 +406,7 @@ class CNV_Profile:
         snv_df = switch_contigs(snv_df)
         bed_df = switch_contigs(bed_df)
         
-        snv_df = snv_df.merge(bed_df, on=['CHROM', 'POS'])
+        snv_df = snv_df.merge(bed_df, on=['CHROM', 'POS'], how='right')
         
         pandarallel.initialize()
         snv_df['paternal_ploidy'] = snv_df.parallel_apply(
@@ -396,6 +442,7 @@ class CNV_Profile:
         return snv_df, correct_phase_interval_trees
 
     def save_hets_file(self, filename, vcf, bed, purity):
+        """Generate SNV adjusted depths for given purity for given bed file and save output to filename"""
         vcf_df, _ = self.generate_snvs(vcf, bed, purity)
         vcf_df.rename(columns={'CHROM': 'CONTIG', 'POS': 'POSITION',
                                 'ref_count': 'REF_COUNT', 'alt_count': 'ALT_COUNT'})[['CONTIG', 'POSITION',
@@ -418,17 +465,24 @@ class CNV_Profile:
         return phase_switches
 
     def to_pickle(self, filename):
+        """Save self as a pickle to be imported elsewhere"""
         with open(filename, 'wb') as f:
             pickle.dump(self, f)
 
     def save_seg_file(self, filename, purity=1):
-        if purity == 1:
-            self.cnv_profile_df.to_csv(filename, sep='\t', index=False)
-        else:
-            pass
+        assert 0 <= purity <= 1
+
+        local_cnv_profile_df = self.cnv_profile_df.copy()
+        # adjust cnv profile by purity; if purity=1, profile remains the same
+        local_cnv_profile_df['mu.major'] = local_cnv_profile_df['mu.major'] * purity + (1 - purity)
+        local_cnv_profile_df['mu.minor'] = local_cnv_profile_df['mu.minor'] * purity + (1 - purity)
+        local_cnv_profile_df.to_csv(filename, sep='\t', index=False)
 
 
 def get_alt_count(m_prop, p_prop, m_present, p_present, coverage, correct_phase):
+    """Returns number of alternate reads generated from a binomial.
+
+    If both alleles have mutation (homozygous mutation), returns the given coverage. If neither allele has mutation, returns 0. Also adjusts for phasing by the boolean correct_phase."""
     if not correct_phase:
         m_prop, p_prop = p_prop, m_prop
         m_present, p_present = p_present, m_present
@@ -449,8 +503,7 @@ def get_average_ploidy(pat_ploidy, mat_ploidy, purity):
 
 
 def single_allele_ploidy(allele, start, end):
-    """Get the ploidy for this allele tree over this interval (start, end)."""
-    # check genome bins - inclusive or exclusive (how it is now) todo
+    """Get the ploidy for this allele tree over this interval [start, end)."""
     intervals = allele.envelop(start, end) | allele[start] | allele[end - 1]
     if len(intervals) == 1:
         return intervals.pop().data[3]
@@ -459,11 +512,36 @@ def single_allele_ploidy(allele, start, end):
         return sum(interval_totals) / (end - start)
 
 
+def get_contigs_from_header(vcf_fn):
+    contig_dict = {}
+    with open(vcf_fn, "r") as vcf:
+        pre_contig = True
+        post_contig = False
+        while not post_contig:
+            line = vcf.readline()
+            re_groups = re.search("##(?P<id>[a-zA-Z0-9]+)=(?P<value>.*)", line)
+            if re_groups.group('id') == 'contig':
+                pre_contig = False
+                contig_groups = re.search("<ID=(?P<name>[chrXY0-9]+),length=(?P<len>[0-9]+)>", re_groups.group('value'))
+                contig_dict[contig_groups.group('name')] = int(contig_groups.group('len'))
+            elif not pre_contig:
+                post_contig = True
+
+    return contig_dict
+
+
 class Chromosome:
     def __init__(self, chr_name, chr_length):
+        """A contig with IntervalTrees representing its copy number state
+
+        :param chr_name: the given name for this contig, generally as a string
+        :param chr_length: the length of this contig, as an int"""
         self.chr_name = chr_name
         self.chr_length = chr_length
+
+        # IntervalTree representing the copy number state of the paternal allele
         self.paternal_tree = IntervalTree()
+        # IntervalTree representing the copy number state of the maternal allele
         self.maternal_tree = IntervalTree()
 
     def add_seg(self, type, allele, cluster_num, cn_change, start, end):
@@ -473,6 +551,7 @@ class Chromosome:
             self.maternal_tree[start:end] = Event(type, allele, cluster_num, cn_change)
 
     def add_seg_interval(self, type, cluster_num, cn_change, interval):
+        """Add segment to one of the alleles with given cluster, copy number change and interval"""
         self.add_seg(type, interval.data.allele, cluster_num, cn_change, interval.begin, interval.end)
 
     def calc_current_cnv_lineage(self, start, end, cluster_num, phylogeny):
@@ -629,4 +708,31 @@ def switch_contigs(input_data):
         return input_data
     else:
         raise ValueError(f'Only dictionaries and pandas DataFrames supported. Not {type(input_data)}.')
+
+
+if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Get coverage and VCF outputs based on a simulated CNV profile')
+    parser.add_argument("cnv_pickle", help='CNV_Profile object as a pickle file')
+    parser.add_argument("coverage_file", help='Bed file giving coverage over bins or intervals')
+    parser.add_argument("vcf_file", help='VCF file for this (simulated) participant')
+    parser.add_argument("read_depths", help='Depths at SNPs given in VCF file, as a bed file')
+    parser.add_argument("purity", help='Desired tumor purity')
+    parser.add_argument("-oc", "--output_coverage", default='./simulated_coverage.txt')
+    parser.add_argument("-oh", "--output_hets", default='./simulated_hets.txt')
+    parser.add_argument("--normal_coverage", help='Bed file with bin/interval coverage for Normal Sample')
+    parser.add_argument("--normal_depths", help='Depths at SNPs for normal sample, as a bed file')
+
+    args = parser.parse_args()
+
+    cnv_object = pickle.load(open(args['cnv_pickle']))
+    cnv_object.save_coverage_file(args["output_coverage"], args["purity"], args["coverage_file"])
+    cnv_object.save_hets_file(args["output_hets"], args["vcf_file"], args["read_depths"], args["purity"])
+
+    if args["normal_coverage"]:
+        cov_fn = os.path.splitext(args["output_coverage"])
+        hets_fn = os.path.splitext(args["output_hets"])
+        cnv_object.save_coverage_file(f'{cov_fn[0]}_normal{cov_fn[1]}', 0, args["normal_coverage"])
+        cnv_object.save_hets_file(f'{hets_fn[0]}_normal{hets_fn[1]}', args["vcf_file"], args["normal_depths"], 0)
 
