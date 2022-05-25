@@ -334,8 +334,6 @@ class CNV_Profile:
             print('cnv_trees not computed yet. Run calculate_profiles() before generating coverage.')
             return None
 
-        if not sigma:
-            sigma = 1
         x_coverage_df = pd.read_csv(cov_binned, sep='\t', names=['chrom', 'start', 'end', 'covcorr',
                                                                  'mean_fraglen', 'sqrt_avg_fragvar', 'n_reads'],
                                     dtype={'chrom': str, 'start': int, 'end': int, 'covcorr': int,
@@ -347,17 +345,20 @@ class CNV_Profile:
         x_coverage_df = x_coverage_df[x_coverage_df['chrom'].isin(self.csize.keys())]
         
         pandarallel.initialize()
+        # bins in cov_collect bed file are inclusive, but end values should be exclusive to compare to intervals
         x_coverage_df['paternal_ploidy'] = x_coverage_df.parallel_apply(
-            lambda x: single_allele_ploidy(self.cnv_trees[x['chrom']][0], x['start'], x['end']),
+            lambda x: single_allele_ploidy(self.cnv_trees[x['chrom']][0], x['start'], x['end'] + 1),
             axis=1)
         x_coverage_df['maternal_ploidy'] = x_coverage_df.parallel_apply(
-            lambda x: single_allele_ploidy(self.cnv_trees[x['chrom']][1], x['start'], x['end']),
+            lambda x: single_allele_ploidy(self.cnv_trees[x['chrom']][1], x['start'], x['end'] + 1),
             axis=1)
         x_coverage_df['ploidy'] = get_average_ploidy(x_coverage_df['paternal_ploidy'].values,
                                                      x_coverage_df['maternal_ploidy'].values,
                                                      purity)
 
         if x_coverage:
+            if not sigma:
+                sigma = 1
             dispersion_norm = np.random.normal(0, sigma, x_coverage_df.shape[0])
             binned_coverage = x_coverage * (x_coverage_df['end'] - x_coverage_df['start']) / 2
             this_chr_coverage = np.asarray([np.random.poisson(cov + np.exp(disp)) for cov, disp in
@@ -469,10 +470,13 @@ class CNV_Profile:
             pickle.dump(self, f)
 
     def save_seg_file(self, filename, purity=1):
-        if purity == 1:
-            self.cnv_profile_df.to_csv(filename, sep='\t', index=False)
-        else:
-            pass  # todo
+        assert 0 <= purity <= 1
+
+        local_cnv_profile_df = self.cnv_profile_df.copy()
+        # adjust cnv profile by purity; if purity=1, profile remains the same
+        local_cnv_profile_df['mu.major'] = local_cnv_profile_df['mu.major'] * purity + (1 - purity)
+        local_cnv_profile_df['mu.minor'] = local_cnv_profile_df['mu.minor'] * purity + (1 - purity)
+        local_cnv_profile_df.to_csv(filename, sep='\t', index=False)
 
 
 def get_alt_count(m_prop, p_prop, m_present, p_present, coverage, correct_phase):
@@ -499,8 +503,7 @@ def get_average_ploidy(pat_ploidy, mat_ploidy, purity):
 
 
 def single_allele_ploidy(allele, start, end):
-    """Get the ploidy for this allele tree over this interval (start, end)."""
-    # check genome bins - inclusive or exclusive (how it is now) todo
+    """Get the ploidy for this allele tree over this interval [start, end)."""
     intervals = allele.envelop(start, end) | allele[start] | allele[end - 1]
     if len(intervals) == 1:
         return intervals.pop().data[3]
@@ -716,15 +719,20 @@ if __name__ == '__main__':
     parser.add_argument("vcf_file", help='VCF file for this (simulated) participant')
     parser.add_argument("read_depths", help='Depths at SNPs given in VCF file, as a bed file')
     parser.add_argument("purity", help='Desired tumor purity')
-    parser.add_argument("-oc", "--output_coverage", default='simulated_coverage.txt')
-    parser.add_argument("-oh", "--output_hets", default='simulated_hets.txt')
-
-    # todo add ability to get normal coverage/depths
+    parser.add_argument("-oc", "--output_coverage", default='./simulated_coverage.txt')
+    parser.add_argument("-oh", "--output_hets", default='./simulated_hets.txt')
+    parser.add_argument("--normal_coverage", help='Bed file with bin/interval coverage for Normal Sample')
+    parser.add_argument("--normal_depths", help='Depths at SNPs for normal sample, as a bed file')
 
     args = parser.parse_args()
 
     cnv_object = pickle.load(open(args['cnv_pickle']))
-    cnv_object.save_coverage_file(args["coverage_filename"], args["purity"], args["coverage_file"])
-    cnv_object.save_hets_file(args["hets_filename"], args["vcf_file"], args["read_depths"], args["purity"])
+    cnv_object.save_coverage_file(args["output_coverage"], args["purity"], args["coverage_file"])
+    cnv_object.save_hets_file(args["output_hets"], args["vcf_file"], args["read_depths"], args["purity"])
 
+    if args["normal_coverage"]:
+        cov_fn = os.path.splitext(args["output_coverage"])
+        hets_fn = os.path.splitext(args["output_hets"])
+        cnv_object.save_coverage_file(f'{cov_fn[0]}_normal{cov_fn[1]}', 0, args["normal_coverage"])
+        cnv_object.save_hets_file(f'{hets_fn[0]}_normal{hets_fn[1]}', args["vcf_file"], args["normal_depths"], 0)
 
