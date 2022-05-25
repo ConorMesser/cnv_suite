@@ -23,7 +23,7 @@ class CallDepth(wolf.Task):
         "extra_flags": "-s -a"
     }
     script = """
-    samtools view -M -L scatter.bed -u ${bam} | samtools depth -b scatter.bed ${extra_flags} -o coverage.bed - 
+    samtools view -M -L ${bed} -u ${bam} | samtools depth -b ${bed} ${extra_flags} -o coverage.bed - 
     """
     output_patterns = {"coverage": "coverage.bed"}
     docker = "gcr.io/broad-getzlab-workflows/base_image:v0.0.5"
