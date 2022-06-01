@@ -1,7 +1,6 @@
 import pandas as pd
 import scipy.stats as ss
 import matplotlib.pyplot as plt
-import matplotlib
 import numpy as np
 import math
 import plotly.express as px

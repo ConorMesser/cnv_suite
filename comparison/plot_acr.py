@@ -113,8 +113,8 @@ def plot_acr_comparison(seg1, seg2, bins, seg_names):
     fig.delaxes(ax_colorbar[0])
     fig.delaxes(ax_colorbar[1])
     fig.tight_layout()
-    ensure_min_ylim(ax[0], ax[0].get_ylim(), min_ylim)
-    ensure_min_ylim(ax[1], ax[1].get_ylim(), min_ylim)
+    _ensure_min_ylim(ax[0], ax[0].get_ylim(), min_ylim)
+    _ensure_min_ylim(ax[1], ax[1].get_ylim(), min_ylim)
 
     # save full plot with colored bins
     fig.savefig('full_plot_color.png')
@@ -122,8 +122,8 @@ def plot_acr_comparison(seg1, seg2, bins, seg_names):
     # save zoomed plot with colored bins
     ninety_quartile_1 = bins['mu.major_1'].quantile(0.9, interpolation='lower')
     ninety_quartile_2 = bins['mu.major_2'].quantile(0.9, interpolation='lower')
-    ensure_min_ylim(ax[0], [0, ninety_quartile_1], min_ylim)
-    ensure_min_ylim(ax[1], [0, ninety_quartile_2], min_ylim)
+    _ensure_min_ylim(ax[0], [0, ninety_quartile_1], min_ylim)
+    _ensure_min_ylim(ax[1], [0, ninety_quartile_2], min_ylim)
     fig.savefig('zoom_plot_color.png')
 
     # save zoomed plot with gray bins for clarity
@@ -195,7 +195,7 @@ def plot_acr(seg_df, ax, combined_chr_ends, seg_name, xticks):
         ax.set_xticks(xticks)
 
 
-def ensure_min_ylim(ax, lim, min_lim):
+def _ensure_min_ylim(ax, lim, min_lim):
     """
     Calculates y limits, setting as (min(0, lim[0]), max(min_lim, lim[1]).
     """

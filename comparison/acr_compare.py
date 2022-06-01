@@ -304,5 +304,6 @@ def append_bin(start, end, stats1, stats2, chromosome):
     return bin_dict
 
 
-if __name__ == '__main__':
-    score, non_o_len, o_len, df = acr_compare(file_1='./REBC-ACBH-rebc.acs.seg', file_2='./REBC-ACBH-wolf.acs.seg')
+# TESTING
+# if __name__ == '__main__':
+#     score, non_o_len, o_len, df = acr_compare(file_1='./REBC-ACBH-rebc.acs.seg', file_2='./REBC-ACBH-wolf.acs.seg')
