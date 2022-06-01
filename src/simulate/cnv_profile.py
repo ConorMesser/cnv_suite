@@ -10,7 +10,7 @@ from natsort import natsort_keygen
 from pandarallel import pandarallel
 import pickle
 
-from simulation_utils import switch_contigs, get_alt_count, \
+from cnv_suite.utils import switch_contigs, get_alt_count, \
     get_contigs_from_header, get_average_ploidy, single_allele_ploidy
 
 
