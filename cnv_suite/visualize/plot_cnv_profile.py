@@ -1,12 +1,15 @@
+#!/bin/bash/env python3
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import patches
 from natsort import natsorted
 import plotly.graph_objects as go
+import pandas as pd
 
 
 def plot_acr_static(seg_df, ax, csize,
-             segment_colors='difference', sigmas=True, min_seg_lw=2, y_upper_lim=2):
+                    segment_colors=None, sigmas=None, min_seg_lw=None, y_upper_lim=None):
     """Create static Allelic Copy Ratio plot for given segment profile.
 
     :param seg_df: pandas.DataFrame with segment profile (allelic CN mu and sigmas)
@@ -18,15 +21,20 @@ def plot_acr_static(seg_df, ax, csize,
     :param y_upper_lim: yaxis upper limit; default=2
     :return: None (modifies given figure.axes)
     """
+    if not min_seg_lw:
+        min_seg_lw = 2
+    if not y_upper_lim:
+        y_upper_lim = 2
+
     seg_df, chr_order, chrom_start, col_names = prepare_df(seg_df, csize, suffix='.bp')
     add_background(ax, chr_order, csize, height=7)
 
     # determine segment colors based on input
-    if segment_colors == 'black':
+    if segment_colors == 'difference' or segment_colors is None:
+        seg_df['color_bottom'], seg_df['color_top'] = calc_color(seg_df, col_names['mu_major'], col_names['mu_minor'])
+    elif segment_colors == 'black':
         seg_df['color_bottom'] = '#000000'
         seg_df['color_top'] = '#000000'
-    elif segment_colors == 'difference':
-        seg_df['color_bottom'], seg_df['color_top'] = calc_color(seg_df, col_names['mu_major'], col_names['mu_minor'])
     elif segment_colors == 'cluster':
         phylogic_color_dict = get_phylogic_color_scale()
         seg_df['color_bottom'] = seg_df['cluster_assignment'].map(phylogic_color_dict)
@@ -42,22 +50,25 @@ def plot_acr_static(seg_df, ax, csize,
               color=seg_df['color_top'], lw=min_seg_lw)
 
     # if sigmas are desired, draw over segments
-    if sigmas:
-        for _, x in seg_df.iterrows():
-            ax.add_patch(patches.Rectangle(
-                (x['genome_start'], x[col_names['mu_major']] - x[col_names['sigma_major']]),
-                x['genome_end'] - x['genome_start'], 2 * x[col_names['sigma_major']],
-                color=x['color_top'],
-                alpha=1,
-                linewidth=0
-            ))
-            ax.add_patch(patches.Rectangle(
-                (x['genome_start'], x[col_names['mu_minor']] - x[col_names['sigma_minor']]),
-                x['genome_end'] - x['genome_start'], 2 * x[col_names['sigma_minor']],
-                color=x['color_bottom'],
-                alpha=1,
-                linewidth=0
-            ))
+    if sigmas or sigmas is None:
+        if col_names['sigma_major'] not in seg_df or col_names['sigma_minor'] not in seg_df:
+            print(f'Displaying sigmas is desired, but no sigma columns (i.e. {col_names["sigma_major"]}) exist.')
+        else:
+            for _, x in seg_df.iterrows():
+                ax.add_patch(patches.Rectangle(
+                    (x['genome_start'], x[col_names['mu_major']] - x[col_names['sigma_major']]),
+                    x['genome_end'] - x['genome_start'], 2 * x[col_names['sigma_major']],
+                    color=x['color_top'],
+                    alpha=1,
+                    linewidth=0
+                ))
+                ax.add_patch(patches.Rectangle(
+                    (x['genome_start'], x[col_names['mu_minor']] - x[col_names['sigma_minor']]),
+                    x['genome_end'] - x['genome_start'], 2 * x[col_names['sigma_minor']],
+                    color=x['color_bottom'],
+                    alpha=1,
+                    linewidth=0
+                ))
 
     # layout (can be overridden)
     ax.set_xticks(np.asarray(list(chrom_start.values())[:-1]) + np.asarray(list(csize.values())) / 2)
@@ -109,6 +120,9 @@ def plot_acr_interactive(seg_df, fig, csize,
         seg_df['color_top'] = '#E6393F'  # red
 
     trace_num = len(fig.data)
+    if sigmas and col_names['sigma_major'] not in seg_df:
+            print(f'Displaying sigmas is desired, but no sigma columns (i.e. {col_names["sigma_major"]}) exist.')
+            sigmas = False
     seg_df.apply(lambda x: make_cnv_scatter(x, fig, col_names, lw=min_seg_lw, row_num=row+1, sigmas=sigmas), axis=1)
 
     # modify layout
@@ -399,3 +413,53 @@ def get_phylogic_color_scale():
                            [0, 0, 0]]  # black
     colors_dict = {str(i): get_hex_string(c) for i, c in enumerate(phylogic_color_list)}
     return colors_dict
+
+
+def save_static_plot(seg_df, output_fn, csize=None,
+                     segment_colors=None, sigmas=None, min_seg_lw=None, y_upper_lim=None):
+    if not csize:
+        # get max positions for each chromosome
+        csize = seg_df.groupby('Chromosome')['End.bp'].max().to_dict()
+
+    fig, ax = plt.subplots()
+    plot_acr_static(seg_df, ax=ax, csize=csize, segment_colors=segment_colors,
+                    sigmas=sigmas, min_seg_lw=min_seg_lw, y_upper_lim=y_upper_lim)
+
+    fig.savefig(output_fn)
+
+
+def main():
+    # parse args
+    import argparse
+    import os
+
+    parser = argparse.ArgumentParser(description='Save static CN Profile plot for this segment dataframe')
+    parser.add_argument("segment_df", help='CN Segment Profile as pandas DataFrame')
+    parser.add_argument("output_fn", help='Output path for saved figure')
+    parser.add_argument("--csize_file", help='tsv file containing chromosome sizes')
+    parser.add_argument("-sc", "--segment_colors", choices=['black', 'difference', 'cluster', 'blue_red'],
+                        help='Method for determining segment colors')
+    parser.add_argument("--hide_sigmas", dest='sigmas', action='store_false', help='Do not display segment sigmas')
+    parser.add_argument("--min_seg_lw",
+                        help='Segment line_width (all segments if sigmas are hidden else minimum); default=2')
+    parser.add_argument("--y_upper", help='yaxis upper limit; default=2')
+
+    args = parser.parse_args()
+
+    if args.csize_file and os.path.exists(args.csize_file):
+        _, ext = os.path.splitext(args.csize_file)
+        if ext == '.bed':
+            columns = ['chr', 'start', 'len']  # three columns if bed file
+        else:
+            columns = ['chr', 'len']
+        csize = pd.read_csv(args.csize_file, sep='\t', header=None, names=columns).set_index(
+            'chr', inplace=True).to_dict()['len']
+    else:
+        csize = None
+
+    save_static_plot(args.segment_df, args.output_fn, csize=csize, segment_colors=args.segment_colors,
+                     sigmas=args.sigmas, min_seg_lw=args.min_seg_lw, y_upper_lim=args.y_upper)
+
+
+if __name__ == '__main__':
+    main()

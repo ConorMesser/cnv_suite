@@ -8,8 +8,6 @@ from math import log
 import sys
 from scipy.optimize import minimize
 
-from plot_acr import plot_acr_comparison
-
 STAT_COLUMNS = ['mu.minor', 'sigma.minor', 'mu.major', 'sigma.major']
 
 
@@ -52,10 +50,6 @@ def acr_compare(file_1=None, file_2=None):
     non_overlap_length = int(bins['length_1_unique'].sum()) + int(bins['length_2_unique'].sum())
     overlap_length = int(bins['length_overlap'].sum())
 
-    # plot files with bins marked
-    plot_acr_comparison(seg1, seg2, bins, [file_1, file_2])  # better naming todo
-
-    # return weighted average
     return overlap_score, optimal_ratio, non_overlap_length, overlap_length, bins
 
 
@@ -116,6 +110,7 @@ def calc_overlap(mu1, sigma1, mu2, sigma2, unique, ratio=1):
         return 1
 
     # run builtin method in statistics.NormalDist
+    # returns OVL; should I give option for Bhattacharyya? todo
     if 'statistics' in sys.modules:
         return NormalDist(mu1, sigma1).overlap(NormalDist(mu2, sigma2))
 

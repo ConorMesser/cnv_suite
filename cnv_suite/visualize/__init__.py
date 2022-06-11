@@ -1,1 +1,1 @@
-from plot_cnv_profile import *
+from .plot_cnv_profile import *

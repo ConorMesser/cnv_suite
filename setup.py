@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 import sys
 
 ver_info = sys.version_info
@@ -6,16 +6,17 @@ if ver_info < (3,7,0):
     raise RuntimeError("CNV_Suite requires at least python 3.7")
 
 setup(
-    name='CNV_Suite',
+    name='cnv_suite',
     version="0.1",
-    packages=[
-        'cnv_suite',
-    ],
-    # entry_points={
-    #     'console_scripts': [
-    #         'hapaseg = hapaseg.__main__:main',
-    #     ]
-    # },
+    # package_dir={"": "cnv_suite"},
+    packages=['cnv_suite.compare', 'cnv_suite.simulate', 'cnv_suite.utils', 'cnv_suite.visualize', 'cnv_suite'],
+    entry_points={
+        'console_scripts': [
+            'simulate = cnv_suite.simulate.cnv_profile:main',
+            'visualize = cnv_suite.visualize.plot_cnv_profile:main',
+            'compare = cnv_suite.compare.__main__:main'
+        ]
+    },
     description='Copy Number tools for visualization, simulation, and comparison.',
     author='Conor Messer',
     author_email='cmesser@broadinstitute.org',

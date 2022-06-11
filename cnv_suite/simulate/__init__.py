@@ -1,1 +1,1 @@
-from cnv_profile import CNV_Profile
+from .cnv_profile import CNV_Profile

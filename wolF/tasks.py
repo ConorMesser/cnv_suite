@@ -3,14 +3,16 @@ import wolf
 
 class SimulateProfile(wolf.Task):
     inputs = {
-        "cnv_pickle",
-        "purity",
-        "coverage_file",
-        "vcf_file",
-        "read_depths"
+        "cnv_pickle": None,
+        "purity": None,
+        "coverage_file": None,
+        "vcf_file": None,
+        "read_depths": None,
+        # "normal_coverage": "", todo
+        # "normal_depths": "",
     }
     script = """
-    ./cnv_profile.py ${cnv_pickle} ${coverage_file} ${vcf_file} ${read_depths} ${purity} -oc simulated_coverage.txt -oh simulated_hets.txt
+    simulate ${cnv_pickle} ${coverage_file} ${vcf_file} ${read_depths} ${purity} -oc simulated_coverage.txt -oh simulated_hets.txt
     """
     output_patterns = {"coverage": "simulated_coverage.txt",
                        "hets": "simulated_hets.txt"}

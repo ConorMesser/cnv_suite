@@ -2,17 +2,20 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import numpy as np
+import os
 
 
-def plot_acr_comparison(seg1, seg2, bins, seg_names):
+def plot_acr_comparison(seg1, seg2, bins, sample_one_name, sample_two_name, output_dir):
     """
     Make ACR comparison plot with both ACR segment plots, bin lines and heatmap for overlap scores.
 
     :param seg1: first seg dataframe
     :param seg2: second seg dataframe
     :param bins: bin dataframe
-    :param seg_names: list of names for seg files/data
-    :return: None (save plot figures)
+    :param sample_one_name: name for first sample
+    :param sample_two_name: name for second sample
+    :param output_dir: path to file output directory
+    :return: ACR comparison figure
     """
     # constant parameters
     min_ylim = 1.2
@@ -40,6 +43,7 @@ def plot_acr_comparison(seg1, seg2, bins, seg_names):
     combined_chr_ends = combined_chr_ends.max(axis=0).cumsum()
 
     # plot primary ACR plots
+    seg_names = [sample_one_name, sample_two_name]
     for i in range(2):
         if i == 0:
             xticks=[]
@@ -117,20 +121,22 @@ def plot_acr_comparison(seg1, seg2, bins, seg_names):
     _ensure_min_ylim(ax[1], ax[1].get_ylim(), min_ylim)
 
     # save full plot with colored bins
-    fig.savefig('full_plot_color.png')
+    fig.savefig(os.path.join(output_dir, 'acr_comparison_full_color.svg'))
 
     # save zoomed plot with colored bins
     ninety_quartile_1 = bins['mu.major_1'].quantile(0.9, interpolation='lower')
     ninety_quartile_2 = bins['mu.major_2'].quantile(0.9, interpolation='lower')
     _ensure_min_ylim(ax[0], [0, ninety_quartile_1], min_ylim)
     _ensure_min_ylim(ax[1], [0, ninety_quartile_2], min_ylim)
-    fig.savefig('zoom_plot_color.png')
+    fig.savefig(os.path.join(output_dir, 'acr_comparison_zoom_color.svg'))
 
     # save zoomed plot with gray bins for clarity
     bin_line_artists = np.asarray(bin_line_artists)
     change_to_gray = lambda x: x.set_color('gray')
     np.vectorize(change_to_gray)(bin_line_artists)
-    fig.savefig('zoom_plot_grey.png')
+    fig.savefig(os.path.join(output_dir, 'acr_comparison_zoom_grey.svg'))
+
+    return fig
 
 
 def plot_acr(seg_df, ax, combined_chr_ends, seg_name, xticks):

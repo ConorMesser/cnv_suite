@@ -206,6 +206,3 @@ def get_differences_from_intervals(contig_tree, contig_name, sample_names=None, 
         columns = columns + ['bp_type', 'bp_size']
 
     return pd.DataFrame(data, columns=columns + ['length'])
-
-
-

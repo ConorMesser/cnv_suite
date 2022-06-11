@@ -632,7 +632,22 @@ class Phylogeny:
         return cluster_list, [self.ccfs[c] for c in cluster_list]
 
 
-if __name__ == '__main__':
+def simulate_coverage_and_depth(cnv_pickle, coverage_file, vcf_file, read_depths, purity,
+                                output_coverage_fn, output_hets_fn, normal_coverage=None, normal_depths=None):
+    cnv_object = pickle.load(cnv_pickle)
+    cnv_object.save_coverage_file(output_coverage_fn, purity, coverage_file)
+    cnv_object.save_hets_file(output_hets_fn, vcf_file, read_depths, purity)
+
+    if normal_coverage and normal_depths:
+        cov_fn = os.path.splitext(args["output_coverage"])
+        hets_fn = os.path.splitext(args["output_hets"])
+        cnv_object.save_coverage_file(f'{cov_fn[0]}_normal{cov_fn[1]}', 0, args["normal_coverage"])
+        cnv_object.save_hets_file(f'{hets_fn[0]}_normal{hets_fn[1]}', args["vcf_file"], args["normal_depths"], 0)
+    else:
+        print('No Normal CNV profile calculated')
+
+
+def main():
     import argparse
 
     parser = argparse.ArgumentParser(description='Get coverage and VCF outputs based on a simulated CNV profile')
@@ -648,13 +663,10 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    cnv_object = pickle.load(open(args['cnv_pickle']))
-    cnv_object.save_coverage_file(args["output_coverage"], args["purity"], args["coverage_file"])
-    cnv_object.save_hets_file(args["output_hets"], args["vcf_file"], args["read_depths"], args["purity"])
+    simulate_coverage_and_depth(open(args['cnv_pickle']), args["coverage_file"], args["vcf_file"], args["read_depths"],
+                                args["purity"], args["output_coverage"], args["output_hets"],
+                                args["normal_coverage"], args["normal_depths"])
 
-    if args["normal_coverage"]:
-        cov_fn = os.path.splitext(args["output_coverage"])
-        hets_fn = os.path.splitext(args["output_hets"])
-        cnv_object.save_coverage_file(f'{cov_fn[0]}_normal{cov_fn[1]}', 0, args["normal_coverage"])
-        cnv_object.save_hets_file(f'{hets_fn[0]}_normal{hets_fn[1]}', args["vcf_file"], args["normal_depths"], 0)
 
+if __name__ == '__main__':
+    main()
