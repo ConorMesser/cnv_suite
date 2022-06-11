@@ -10,7 +10,8 @@ from natsort import natsort_keygen
 from pandarallel import pandarallel
 import pickle
 
-from cnv_suite.utils import switch_contigs, get_alt_count, \
+from cnv_suite.utils import switch_contigs
+from cnv_suite.utils.simulation_utils import get_alt_count, \
     get_contigs_from_header, get_average_ploidy, single_allele_ploidy
 
 
@@ -639,10 +640,10 @@ def simulate_coverage_and_depth(cnv_pickle, coverage_file, vcf_file, read_depths
     cnv_object.save_hets_file(output_hets_fn, vcf_file, read_depths, purity)
 
     if normal_coverage and normal_depths:
-        cov_fn = os.path.splitext(args["output_coverage"])
-        hets_fn = os.path.splitext(args["output_hets"])
-        cnv_object.save_coverage_file(f'{cov_fn[0]}_normal{cov_fn[1]}', 0, args["normal_coverage"])
-        cnv_object.save_hets_file(f'{hets_fn[0]}_normal{hets_fn[1]}', args["vcf_file"], args["normal_depths"], 0)
+        cov_fn = os.path.splitext(output_coverage_fn)
+        hets_fn = os.path.splitext(output_hets_fn)
+        cnv_object.save_coverage_file(f'{cov_fn[0]}_normal{cov_fn[1]}', 0, normal_coverage)
+        cnv_object.save_hets_file(f'{hets_fn[0]}_normal{hets_fn[1]}', vcf_file, normal_depths, 0)
     else:
         print('No Normal CNV profile calculated')
 
