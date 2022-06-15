@@ -434,7 +434,7 @@ def main():
     import os
 
     parser = argparse.ArgumentParser(description='Save static CN Profile plot for this segment dataframe')
-    parser.add_argument("segment_df", help='CN Segment Profile as pandas DataFrame')
+    parser.add_argument("segment_fn", help='CN Segment Profile filename')
     parser.add_argument("output_fn", help='Output path for saved figure')
     parser.add_argument("--csize_file", help='tsv file containing chromosome sizes')
     parser.add_argument("-sc", "--segment_colors", choices=['black', 'difference', 'cluster', 'blue_red'],
@@ -457,7 +457,9 @@ def main():
     else:
         csize = None
 
-    save_static_plot(args.segment_df, args.output_fn, csize=csize, segment_colors=args.segment_colors,
+    segment_df = pd.read_csv(args.segment_fn, sep='\t', header=0)
+
+    save_static_plot(segment_df, args.output_fn, csize=csize, segment_colors=args.segment_colors,
                      sigmas=args.sigmas, min_seg_lw=args.min_seg_lw, y_upper_lim=args.y_upper)
 
 
