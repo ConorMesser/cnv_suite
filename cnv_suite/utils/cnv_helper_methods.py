@@ -153,7 +153,7 @@ def return_seg_data_at_loci(seg_trees, sample, contig, pos):
     except IndexError or KeyError:  # no segment at given loci
         return None
     else:
-        return dict(data)
+        return data._asdict()
 
 
 def apply_segment_data_to_df(df, seg_trees):
