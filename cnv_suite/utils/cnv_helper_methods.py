@@ -152,7 +152,7 @@ def return_seg_data_at_loci(seg_trees, sample, contig, pos):
         data = seg_trees[contig - 1][pos].pop().data[sample]  # only one hit, because of split_overlaps
     except IndexError or KeyError:  # no segment at given loci
         return None
-    finally:
+    else:
         return data._to_dict()
 
 
