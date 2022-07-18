@@ -183,5 +183,5 @@ def apply_segment_data_to_df(df, seg_trees):
     # turn into df
     data_df = pd.DataFrame([{n: np.NaN for n in col_names} if pd.isnull(d) else d for d in data])
 
-    return pd.concat([df_copy, data_df], axis=0)
+    return pd.concat([df_copy.reset_index(drop=True), data_df], axis=1)
 
