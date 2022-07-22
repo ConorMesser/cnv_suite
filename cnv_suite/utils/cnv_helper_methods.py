@@ -146,21 +146,21 @@ def return_seg_data_at_loci(seg_trees, sample, contig, pos):
     :param contig: chromosome
     :param pos: loci position
     :return: dict with data (or None if segment doesn't exist)
+
+    :raise: ValueError if contig is not int or castable to int. NO X/Y chromosomes!
     """
-    # todo make sure contig is int
     try:
+        contig = int(contig)
+    except ValueError as e:
+        raise ValueError('Contig must be an int (or castable to int). Consider using switch_contigs if contigs include X/Y') from e
+    else:
         segment = seg_trees[contig - 1][pos]
-        if len(segment) == 0:
+        if len(segment) == 0:  # no segment present for any sample
             return None
-        data = segment.pop().data
-        if sample not in data.keys():
+        data = segment.pop().data  # only one segment should be in tree (after split and merge overlaps)
+        if sample not in data.keys():  # no segment present for this sample
             return None
         return data[sample]._asdict()
-        # data = seg_trees[contig - 1][pos].pop().data[sample]  # only one hit, because of split_overlaps
-    except IndexError or KeyError:  # no segment at given loci
-        return None
-    else:
-        return data._asdict()
 
 
 def apply_segment_data_to_df(df, seg_trees):
