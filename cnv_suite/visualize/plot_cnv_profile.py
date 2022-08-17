@@ -2,10 +2,13 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+import plotly.subplots
 from matplotlib import patches
 from natsort import natsorted
 import plotly.graph_objects as go
 import pandas as pd
+
+from cnv_suite.cnv_suite import calc_cn_levels, calc_absolute_cn, calc_avg_cn
 
 
 def plot_acr_static(seg_df, ax, csize,
@@ -87,43 +90,75 @@ def plot_acr_static(seg_df, ax, csize,
     plt.ylabel("Allelic Copy Number")
 
 
-def plot_acr_interactive(seg_df, fig, csize,
-                         segment_colors='difference', sigmas=True, min_seg_lw=0.015, y_upper_lim=2, row=0):
+def plot_acr_subplots(fig_list, title, fig_names, **kwargs):
+    """Add each Figure in list to plotly subplots.
+
+    Additional kwargs are passed to plotly's make_subplots method.
+
+    :param fig_list: List of plotly.graph_objects.Figure, one for each row
+    :param title: Title of plot
+    :param fig_names: Title for each subplot (one for each row)
+    """
+    fig = plotly.subplots.make_subplots(rows=len(fig_list), cols=1, shared_xaxes=True, subplot_titles=fig_names, **kwargs)
+    fig.update_layout(title_text=title)
+
+    for i in range(len(fig_list)):
+        for t in fig_list[i].data:
+            fig.add_trace(t, row=i+1, col=1)
+
+    # todo update height based on subplot number
+
+    return fig
+
+
+def plot_acr_interactive(seg_df, csize,
+                         segment_colors='Difference', sigmas=True,
+                         purity=None, ploidy=None,
+                         min_seg_lw=0.015, y_upper_lim=2):
     """Create interactive plotly Allelic Copy Ratio plot for given segment profile.
 
     :param seg_df: pandas.DataFrame with segment profile (allelic CN mu and sigmas)
-    :param fig: plotly Figure; must be a subplots Figure (created with plotly.subplots.make_subplots())
     :param csize: dict with chromosome sizes, as {contig_name: size}
-    :param segment_colors: color specification for segments. One of [black, difference (default), cluster, or blue_red (any other input)].
+    :param segment_colors: color specification for segments. One of [Black, Difference (default), Cluster, or Blue/Red].
     :param sigmas: boolean, True (default) if segments should have heights determined by sigma values
     :param min_seg_lw: Segment line_width (for all segments if sigmas=False or minimum if sigmas=True); default=0.015
     :param y_upper_lim: yaxis upper limit; default=2
-    :param row: row in subplots Figure to place plot; default=0
-    :return: (trace start num, trace end num) for later modification; additionally modifies given Figure
+    :return: (plotly.graph_objects.Figure, pd.DataFrame, int, int)
+             (ACR Figure, modified Segment df, trace start, trace end)
     """
     # fig should have background set to white
     seg_df, chr_order, chrom_start, col_names = prepare_df(seg_df, csize, suffix='.bp')
-    add_background(fig, chr_order, csize, row=row+1)
+    if sigmas and col_names['sigma_major'] not in seg_df:
+        print(f'Displaying sigmas is desired, but no sigma columns (i.e. {col_names["sigma_major"]}) exist.')
+        sigmas = False
 
-    seg_df['color_bottom_diff'], seg_df['color_top_diff'] = calc_color(seg_df, col_names['mu_major'], col_names['mu_minor'])
+    fig = go.Figure()
+    add_background(fig, chr_order, csize)
+
+    # calculate Phylogic cluster colors
     if 'cluster_assignment' in seg_df.columns:
         phylogic_color_dict = get_phylogic_color_scale()
         seg_df['color_bottom_cluster'] = seg_df['cluster_assignment'].map(phylogic_color_dict)
         seg_df['color_top_cluster'] = seg_df['color_bottom_cluster']
 
-    if segment_colors == 'difference':
-        seg_df['color_bottom'], seg_df['color_top'] = seg_df['color_bottom_diff'], seg_df['color_top_diff']
-    elif segment_colors == 'cluster' and 'cluster_assignment' in seg_df.columns:
-        seg_df['color_bottom'], seg_df['color_top'] = seg_df['color_bottom_cluster'], seg_df['color_top_cluster']
-    else:
-        seg_df['color_bottom'] = '#2C38A8'  # blue
-        seg_df['color_top'] = '#E6393F'  # red
+    # calculate red/blue gradient for difference between segments
+    seg_df['color_bottom_diff'], seg_df['color_top_diff'] = calc_color(seg_df, col_names['mu_major'], col_names['mu_minor'])
+
+    # calculate absolute segment values (scaled by purity/ploidy)
+    if purity and ploidy:
+        c_0, c_delta = calc_cn_levels(purity, ploidy, avg_cn=calc_avg_cn(seg_df, allele_col=col_names['mu_minor'], total_cn_col=col_names['tau']))
+        sigma = np.zeros(seg_df.shape[0]) if col_names['sigma_major'] not in seg_df else seg_df[col_names['sigma_major']]
+        seg_df['mu_major_adj'], seg_df['mu_minor_adj'], seg_df['sigma_adj'] = calc_absolute_cn(
+            seg_df[col_names['mu_major']], seg_df[col_names['mu_minor']], sigma, c_0, c_delta)
+        seg_df['color_bottom_diff_adj'], seg_df['color_top_diff_adj'] = calc_color(seg_df, 'mu_major_adj', 'mu_minor_adj')
 
     trace_num = len(fig.data)
-    if sigmas and col_names['sigma_major'] not in seg_df:
-            print(f'Displaying sigmas is desired, but no sigma columns (i.e. {col_names["sigma_major"]}) exist.')
-            sigmas = False
-    seg_df.apply(lambda x: make_cnv_scatter(x, fig, col_names, lw=min_seg_lw, row_num=row+1, sigmas=sigmas), axis=1)
+    seg_df.apply(lambda x: make_cnv_scatter(x, fig, col_names, lw=min_seg_lw, sigmas=sigmas), axis=1)
+    trace_end = len(fig.data)
+
+    # update segment colors and absolute CN values, if desired
+    update_cnv_color_absolute(fig, seg_df, absolute=False, color=segment_colors,
+                              start_trace=trace_num, end_trace=trace_end)
 
     # modify layout
     fig.update_xaxes(showgrid=False,
@@ -144,9 +179,9 @@ def plot_acr_interactive(seg_df, fig, csize,
                      title_text="Allelic Copy Number")
 
     ################
-    fig.update_layout(plot_bgcolor='white')  # title=mut_df.iloc[0]['Patient_ID'],
+    fig.update_layout(plot_bgcolor='white')
 
-    return trace_num, len(fig.data)
+    return fig, seg_df, trace_num, trace_end
 
 
 def make_cnv_scatter(series, fig, col_names, lw=0.015, row_num=1, sigmas=False):
@@ -167,8 +202,8 @@ def make_cnv_scatter(series, fig, col_names, lw=0.015, row_num=1, sigmas=False):
     sigma = series[col_names['sigma_major']] if sigmas else 0
     length = end - start
     n_probes = series['n_probes'] if 'n_probes' in series else np.NaN
-    color_maj = series['color_top']
-    color_min = series['color_bottom']
+    color_maj = '#E6393F'  # red
+    color_min = '#2C38A8'  # blue
     cluster = series['cluster_assignment'] if 'cluster_assignment' in series else np.NaN
 
     fig.add_trace(go.Scatter(x=[start, start, end, end],
@@ -199,6 +234,44 @@ def make_cnv_scatter(series, fig, col_names, lw=0.015, row_num=1, sigmas=False):
                        f'Cluster: {cluster}; '
                        f'Length: {length:.2e} ({n_probes} probes)',
                   showlegend=False), row=row_num, col=1)
+
+
+def update_cnv_color_absolute(fig, seg_df, absolute, color, start_trace, end_trace):
+    """Helper function to update both the CN values (raw or ABSOLUTE) and segment colors.
+
+    :param fig: plotly.graph_objects.Figure to be updated
+    :param seg_df: pd.DataFrame with segment data; should include relevant columns (mu_major_adj, color_bottom_diff, etc.)
+    :param absolute: True if segments should be displayed as ABSOLUTE adjusted
+    :param color: color specification for segments. One of [Black, Difference, Cluster, Blue/Red].
+    :param start_trace: which trace to begin with in Figure
+    :param end_trace: which trace to end with in Figure
+    """
+
+    if absolute and 'mu_major_adj' in seg_df:
+        major_cn = seg_df['mu_major_adj']
+        minor_cn = seg_df['mu_minor_adj']
+        sigma = seg_df['sigma_adj']
+    else:
+        major_cn = seg_df['mu_major']
+        minor_cn = seg_df['mu_minor']
+        sigma = seg_df['sigma_major']
+
+    if color == 'Difference' and absolute and 'color_bottom_diff_adj' in seg_df:
+        minor_color, major_color = seg_df['color_bottom_diff_adj'], seg_df['color_bottom_diff_adj']
+    elif color == 'Difference':
+        minor_color, major_color = seg_df['color_bottom_diff'], seg_df['color_bottom_diff']
+    elif color == 'Cluster' and 'color_bottom_cluster' in seg_df:
+        minor_color, major_color = seg_df['color_bottom_cluster'], seg_df['color_top_cluster']
+    elif color == 'Black':
+        minor_color = major_color = ['#000000'] * (end_trace - start_trace)  # black
+    # elif color == 'Clonal/Subclonal':  # todo either get from CN levels or clusters?
+    #     pass
+    else:
+        minor_color = ['#2C38A8'] * (end_trace - start_trace)  # blue
+        major_color = ['#E6393F'] * (end_trace - start_trace)  # red
+
+    update_cnv_scatter_cn(fig, major_cn, minor_cn, sigma, start_trace, end_trace)
+    update_cnv_scatter_color(fig, minor_color, major_color, start_trace, end_trace)
 
 
 def update_cnv_scatter_cn(fig, major, minor, sigma, start_trace, end_trace, lw=0.015):
@@ -252,14 +325,13 @@ def update_cnv_scatter_sigma_toggle(fig, sigmas):
     fig.update_traces(dict(visible=sigmas), selector={'name': 'cnv_sigma'})
 
 
-def add_background(ax, chr_order, csize, height=100, row=1):
+def add_background(ax, chr_order, csize, height=100):
     """Add background alternating gray/white bars to demarcate chromosomes.
     
     :param ax: matplotlib axes or plotly.Figure
     :param chr_order: contig names in order as list
     :param csize: dict with chromosome sizes, as {contig_name: size}
     :param height: height of bars, default=100
-    :param row: specified row (1-index); only used if plotly Figure given
     :return: None
     """
     base_start = 0
@@ -268,7 +340,7 @@ def add_background(ax, chr_order, csize, height=100, row=1):
     for chrom in chr_order:
         if type(ax) == go.Figure:
             ax.add_vrect(base_start, base_start + csize[chrom], fillcolor=patch_color,
-                          opacity=0.1, layer='below', line_width=0, exclude_empty_subplots=False, row=row)
+                          opacity=0.1, layer='below', line_width=0)
         else:
             p = patches.Rectangle((base_start, -0.2), csize[chrom], height, fill=True, facecolor=patch_color,
                                   edgecolor=None, alpha=.1)  # Background

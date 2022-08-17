@@ -71,15 +71,14 @@ def get_segment_interval_trees(seg_dfs, seg_cluster_df=None, cluster_colname='Cl
     return contig_trees
 
 
-def calc_absolute_cn(mu_minor, mu_major, sigma_minor, sigma_major, c0, cn_diff, zero_min=True):
+def calc_absolute_cn(mu_minor, mu_major, sigma, c0, cn_diff, zero_min=True):
     """Calculate ABSOLUTE Copy Number values, given the c0 value and difference between CN 0 and 1.
 
     Note: Values should be given as numpy arrays to use as vectorized function. However, applying on floats will give correct results as well.
 
     :param mu_minor: mu minor value(s) as array or float
     :param mu_major: mu major value(s) as array or float
-    :param sigma_minor: sigma minor value(s) as array or float
-    :param sigma_major: sigma major value(s) as array or float
+    :param sigma: sigma minor value(s) as array or float
     :param c0: Value of Copy Number 0, i.e. copy number ratio for clonally deleted loci
     :param cn_diff: Difference between CN 1 and CN 0, i.e. CN ratio corresponding to haploid gain/loss
     :param zero_min: boolean whether to replace negative CN values with 0; default True
@@ -87,14 +86,13 @@ def calc_absolute_cn(mu_minor, mu_major, sigma_minor, sigma_major, c0, cn_diff, 
     """
     abs_mu_minor = (mu_minor - c0) / cn_diff
     abs_mu_major = (mu_major - c0) / cn_diff
-    abs_sig_minor = sigma_minor / cn_diff
-    abs_sig_major = sigma_major / cn_diff
+    abs_sigma = sigma / cn_diff
 
-    if zero_min:
+    if zero_min:  # todo what about sigma?
         abs_mu_minor = np.where(abs_mu_minor < 0, 0, abs_mu_minor)
         abs_mu_major = np.where(abs_mu_major < 0, 0, abs_mu_major)
 
-    return abs_mu_minor, abs_mu_major, abs_sig_minor, abs_sig_major
+    return abs_mu_minor, abs_mu_major, abs_sigma
 
 
 def calc_cn_levels(purity, ploidy, avg_cn=1):
