@@ -8,7 +8,7 @@ from natsort import natsorted
 import plotly.graph_objects as go
 import pandas as pd
 
-from cnv_suite.cnv_suite import calc_cn_levels, calc_absolute_cn, calc_avg_cn
+from cnv_suite import calc_cn_levels, calc_absolute_cn, calc_avg_cn
 
 
 def plot_acr_static(seg_df, ax, csize,
@@ -29,12 +29,12 @@ def plot_acr_static(seg_df, ax, csize,
     if not y_upper_lim:
         y_upper_lim = 2
 
-    seg_df, chr_order, chrom_start, col_names = prepare_df(seg_df, csize, suffix='.bp')
+    seg_df, chr_order, chrom_start = prepare_df(seg_df, csize, suffix='.bp')
     add_background(ax, chr_order, csize, height=7)
 
     # determine segment colors based on input
     if segment_colors == 'difference' or segment_colors is None:
-        seg_df['color_bottom'], seg_df['color_top'] = calc_color(seg_df, col_names['mu_major'], col_names['mu_minor'])
+        seg_df['color_bottom'], seg_df['color_top'] = calc_color(seg_df, 'mu_major', 'mu_minor')
     elif segment_colors == 'black':
         seg_df['color_bottom'] = '#000000'
         seg_df['color_top'] = '#000000'
@@ -47,27 +47,27 @@ def plot_acr_static(seg_df, ax, csize,
         seg_df['color_top'] = '#E6393F'  # red
 
     # draw segments as lines with default line width
-    ax.hlines(seg_df[col_names['mu_minor']].values, seg_df['genome_start'], seg_df['genome_end'],
+    ax.hlines(seg_df['mu_minor'].values, seg_df['genome_start'], seg_df['genome_end'],
               color=seg_df['color_bottom'], lw=min_seg_lw)
-    ax.hlines(seg_df[col_names['mu_major']].values, seg_df['genome_start'], seg_df['genome_end'],
+    ax.hlines(seg_df['mu_major'].values, seg_df['genome_start'], seg_df['genome_end'],
               color=seg_df['color_top'], lw=min_seg_lw)
 
     # if sigmas are desired, draw over segments
     if sigmas or sigmas is None:
-        if col_names['sigma_major'] not in seg_df or col_names['sigma_minor'] not in seg_df:
-            print(f'Displaying sigmas is desired, but no sigma columns (i.e. {col_names["sigma_major"]}) exist.')
+        if 'sigma_major' not in seg_df or 'sigma_minor' not in seg_df:
+            print(f'Displaying sigmas is desired, but no sigma columns (i.e. "sigma_major") exist.')
         else:
             for _, x in seg_df.iterrows():
                 ax.add_patch(patches.Rectangle(
-                    (x['genome_start'], x[col_names['mu_major']] - x[col_names['sigma_major']]),
-                    x['genome_end'] - x['genome_start'], 2 * x[col_names['sigma_major']],
+                    (x['genome_start'], x['mu_major'] - x['sigma_major']),
+                    x['genome_end'] - x['genome_start'], 2 * x['sigma_major'],
                     color=x['color_top'],
                     alpha=1,
                     linewidth=0
                 ))
                 ax.add_patch(patches.Rectangle(
-                    (x['genome_start'], x[col_names['mu_minor']] - x[col_names['sigma_minor']]),
-                    x['genome_end'] - x['genome_start'], 2 * x[col_names['sigma_minor']],
+                    (x['genome_start'], x['mu_minor'] - x['sigma_minor']),
+                    x['genome_end'] - x['genome_start'], 2 * x['sigma_minor'],
                     color=x['color_bottom'],
                     alpha=1,
                     linewidth=0
@@ -90,7 +90,7 @@ def plot_acr_static(seg_df, ax, csize,
     plt.ylabel("Allelic Copy Number")
 
 
-def plot_acr_subplots(fig_list, title, fig_names, **kwargs):
+def plot_acr_subplots(fig_list, title, fig_names, height_per_sample=350, **kwargs):
     """Add each Figure in list to plotly subplots.
 
     Additional kwargs are passed to plotly's make_subplots method.
@@ -106,7 +106,9 @@ def plot_acr_subplots(fig_list, title, fig_names, **kwargs):
         for t in fig_list[i].data:
             fig.add_trace(t, row=i+1, col=1)
 
-    # todo update height based on subplot number
+    # update height based on subplot number
+    fig.update_layout(height=len(fig_list)*height_per_sample + 50)
+    fig.update_xaxes(fig_list[0].layout.xaxis)
 
     return fig
 
@@ -127,9 +129,9 @@ def plot_acr_interactive(seg_df, csize,
              (ACR Figure, modified Segment df, trace start, trace end)
     """
     # fig should have background set to white
-    seg_df, chr_order, chrom_start, col_names = prepare_df(seg_df, csize, suffix='.bp')
-    if sigmas and col_names['sigma_major'] not in seg_df:
-        print(f'Displaying sigmas is desired, but no sigma columns (i.e. {col_names["sigma_major"]}) exist.')
+    seg_df, chr_order, chrom_start = prepare_df(seg_df, csize, suffix='.bp')
+    if sigmas and 'sigma_major' not in seg_df:
+        print(f'Displaying sigmas is desired, but no sigma columns (i.e. {"sigma_major"}) exist.')
         sigmas = False
 
     fig = go.Figure()
@@ -142,18 +144,18 @@ def plot_acr_interactive(seg_df, csize,
         seg_df['color_top_cluster'] = seg_df['color_bottom_cluster']
 
     # calculate red/blue gradient for difference between segments
-    seg_df['color_bottom_diff'], seg_df['color_top_diff'] = calc_color(seg_df, col_names['mu_major'], col_names['mu_minor'])
+    seg_df['color_bottom_diff'], seg_df['color_top_diff'] = calc_color(seg_df, 'mu_major', 'mu_minor')
 
     # calculate absolute segment values (scaled by purity/ploidy)
     if purity and ploidy:
-        c_0, c_delta = calc_cn_levels(purity, ploidy, avg_cn=calc_avg_cn(seg_df, allele_col=col_names['mu_minor'], total_cn_col=col_names['tau']))
-        sigma = np.zeros(seg_df.shape[0]) if col_names['sigma_major'] not in seg_df else seg_df[col_names['sigma_major']]
+        c_0, c_delta = calc_cn_levels(purity, ploidy, avg_cn=calc_avg_cn(seg_df, allele_col='mu_minor', total_cn_col='tau'))
+        sigma = np.zeros(seg_df.shape[0]) if 'sigma_major' not in seg_df else seg_df['sigma_major']
         seg_df['mu_major_adj'], seg_df['mu_minor_adj'], seg_df['sigma_adj'] = calc_absolute_cn(
-            seg_df[col_names['mu_major']], seg_df[col_names['mu_minor']], sigma, c_0, c_delta)
+            seg_df['mu_major'], seg_df['mu_minor'], sigma, c_0, c_delta)
         seg_df['color_bottom_diff_adj'], seg_df['color_top_diff_adj'] = calc_color(seg_df, 'mu_major_adj', 'mu_minor_adj')
 
     trace_num = len(fig.data)
-    seg_df.apply(lambda x: make_cnv_scatter(x, fig, col_names, lw=min_seg_lw, sigmas=sigmas), axis=1)
+    seg_df.apply(lambda x: make_cnv_scatter(x, fig, lw=min_seg_lw, sigmas=sigmas), axis=1)
     trace_end = len(fig.data)
 
     # update segment colors and absolute CN values, if desired
@@ -168,7 +170,7 @@ def plot_acr_interactive(seg_df, csize,
                      tickfont_size=10,
                      tickangle=0,
                      range=[0, chrom_start['Z']])
-    fig.update_xaxes(title_text="Chromosome", row=-1, col=1)
+    fig.update_xaxes(title_text="Chromosome")
     fig.update_yaxes(showgrid=False,
                      zeroline=False,
                      tickvals=list(range(int(np.floor(y_upper_lim)) + 1)),
@@ -184,22 +186,20 @@ def plot_acr_interactive(seg_df, csize,
     return fig, seg_df, trace_num, trace_end
 
 
-def make_cnv_scatter(series, fig, col_names, lw=0.015, row_num=1, sigmas=False):
+def make_cnv_scatter(series, fig, lw=0.015, sigmas=False):
     """Add segment to figure as Scatter traces
 
     :param series: pandas.Series for single segment
     :param fig: plotly.Figure
-    :param col_names: dictionary specifying correct column names, as {generic_name: name_in_series}
     :param lw: Segment line_width (for all segments if sigmas=False or minimum if sigmas=True); default=0.015
-    :param row_num: specified row (1-index)
     :param sigmas: boolean, True if segments should have heights determined by sigma values; default = False
     :return: None (modifies given Figure)
     """
     start = series['genome_start']
     end = series['genome_end']
-    mu_maj = series[col_names['mu_major']]
-    mu_min = series[col_names['mu_minor']]
-    sigma = series[col_names['sigma_major']] if sigmas else 0
+    mu_maj = series['mu_major']
+    mu_min = series['mu_minor']
+    sigma = series['sigma_major'] if sigmas else 0
     length = end - start
     n_probes = series['n_probes'] if 'n_probes' in series else np.NaN
     color_maj = '#E6393F'  # red
@@ -210,12 +210,12 @@ def make_cnv_scatter(series, fig, col_names, lw=0.015, row_num=1, sigmas=False):
                   y=[mu_min + sigma, mu_min - sigma, mu_min - sigma, mu_min + sigma],
                   fill='toself', fillcolor=color_min, mode='none',
                   hoverinfo='none', name='cnv_sigma',
-                  showlegend=False, visible=sigmas), row=row_num, col=1)
+                  showlegend=False, visible=sigmas))
     fig.add_trace(go.Scatter(x=[start, start, end, end],
                   y=[mu_maj + sigma, mu_maj - sigma, mu_maj - sigma, mu_maj + sigma],
                   fill='toself', fillcolor=color_maj, mode='none',
                   hoverinfo='none', name='cnv_sigma',
-                  showlegend=False, visible=sigmas), row=row_num, col=1)
+                  showlegend=False, visible=sigmas))
     fig.add_trace(go.Scatter(x=[start, start, end, end],
                   y=[mu_min + lw, mu_min - lw, mu_min - lw, mu_min + lw],
                   fill='toself', fillcolor=color_min, mode='none',
@@ -224,7 +224,7 @@ def make_cnv_scatter(series, fig, col_names, lw=0.015, row_num=1, sigmas=False):
                        f'CN Minor: {mu_min:.2f} +-{sigma:.4f}; '  # todo make original, so no updating needed
                        f'Cluster: {cluster}; '
                        f'Length: {length:.2e} ({n_probes} probes)',
-                  showlegend=False), row=row_num, col=1)
+                  showlegend=False))
     fig.add_trace(go.Scatter(x=[start, start, end, end],
                   y=[mu_maj + lw, mu_maj - lw, mu_maj - lw, mu_maj + lw],
                   fill='toself', fillcolor=color_maj, mode='none',
@@ -233,7 +233,7 @@ def make_cnv_scatter(series, fig, col_names, lw=0.015, row_num=1, sigmas=False):
                        f'CN Major: {mu_maj:.2f} +-{sigma:.4f}; '  # todo make original so no updating needed
                        f'Cluster: {cluster}; '
                        f'Length: {length:.2e} ({n_probes} probes)',
-                  showlegend=False), row=row_num, col=1)
+                  showlegend=False))
 
 
 def update_cnv_color_absolute(fig, seg_df, absolute, color, start_trace, end_trace):
@@ -257,18 +257,18 @@ def update_cnv_color_absolute(fig, seg_df, absolute, color, start_trace, end_tra
         sigma = seg_df['sigma_major']
 
     if color == 'Difference' and absolute and 'color_bottom_diff_adj' in seg_df:
-        minor_color, major_color = seg_df['color_bottom_diff_adj'], seg_df['color_bottom_diff_adj']
+        minor_color, major_color = seg_df['color_bottom_diff_adj'], seg_df['color_top_diff_adj']
     elif color == 'Difference':
-        minor_color, major_color = seg_df['color_bottom_diff'], seg_df['color_bottom_diff']
+        minor_color, major_color = seg_df['color_bottom_diff'], seg_df['color_top_diff']
     elif color == 'Cluster' and 'color_bottom_cluster' in seg_df:
         minor_color, major_color = seg_df['color_bottom_cluster'], seg_df['color_top_cluster']
     elif color == 'Black':
-        minor_color = major_color = ['#000000'] * (end_trace - start_trace)  # black
+        minor_color = major_color = ['#000000'] * seg_df.shape[0]  # black
     # elif color == 'Clonal/Subclonal':  # todo either get from CN levels or clusters?
     #     pass
     else:
-        minor_color = ['#2C38A8'] * (end_trace - start_trace)  # blue
-        major_color = ['#E6393F'] * (end_trace - start_trace)  # red
+        minor_color = ['#2C38A8'] * seg_df.shape[0]  # blue
+        major_color = ['#E6393F'] * seg_df.shape[0]  # red
 
     update_cnv_scatter_cn(fig, major_cn, minor_cn, sigma, start_trace, end_trace)
     update_cnv_scatter_color(fig, minor_color, major_color, start_trace, end_trace)
@@ -391,7 +391,8 @@ def prepare_df(df, csize, suffix='.bp'):
             mu_major = 'mu.major',
             mu_minor = 'mu.minor',
             sigma_major = 'sigma.major',
-            sigma_minor = 'sigma.minor'
+            sigma_minor = 'sigma.minor',
+            tau = 'tau'
         )
     elif 'hscr.a2' in df.columns:
         col_names = dict(
@@ -399,7 +400,9 @@ def prepare_df(df, csize, suffix='.bp'):
             mu_minor = 'hscr.a1',
             sigma_major = 'seg_sigma',  # = tau sigma (not allelic sigma), generally slightly lower
             sigma_minor = 'seg_sigma',  # = tau sigma
+            tau = 'tau'
         )
+        df['tau'] = df['total_copy_ratio'] * 2
     # todo add major and minor case (and no sigma?)
     else:
         col_names = None
@@ -416,7 +419,13 @@ def prepare_df(df, csize, suffix='.bp'):
     df['genome_start'] = df.apply(lambda x: chrom_start[str(x['Chromosome'])] + x[f'Start{suffix}'], axis=1)
     df['genome_end'] = df.apply(lambda x: chrom_start[str(x['Chromosome'])] + x[f'End{suffix}'], axis=1)
 
-    return df, chr_order, chrom_start, col_names
+    for key, val in col_names.items():
+        try:
+            df[key] = df[val]
+        except KeyError:
+            print(f'{val} does not exist in df columns')
+
+    return df, chr_order, chrom_start
 
 
 def get_hex_string(c):
