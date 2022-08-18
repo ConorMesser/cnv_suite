@@ -136,7 +136,7 @@ def calc_avg_cn(seg_df,
 
 def return_seg_data_at_loci(seg_trees, sample, contig, pos):
     """Access segment data at given loci, handling missing data.
-    
+
     If segment doesn't exist at loci or sample doesn't have data at loci, returns None
 
     :param seg_trees: dict of IntervalTrees with segment data
@@ -152,18 +152,19 @@ def return_seg_data_at_loci(seg_trees, sample, contig, pos):
     except ValueError as e:
         raise ValueError('Contig must be an int (or castable to int). Consider using switch_contigs if contigs include X/Y') from e
     else:
-        segment = seg_trees[contig - 1][pos]
-        if len(segment) == 0:  # no segment present for any sample
-            return None
-        data = segment.pop().data  # only one segment should be in tree (after split and merge overlaps)
-        if sample not in data.keys():  # no segment present for this sample
-            return None
-        return data[sample]._asdict()
+        if contig <= len(seg_trees):
+            segment = seg_trees[contig - 1][pos]
+            if len(segment) == 0:  # no segment present for any sample
+                return None
+            data = segment.pop().data  # only one segment should be in tree (after split and merge overlaps)
+            if sample not in data.keys():  # no segment present for this sample
+                return None
+            return data[sample]._asdict()
 
 
 def apply_segment_data_to_df(df, seg_trees):
     """Annotate dataframe with segment data
-    
+
     :param df: pandas.DataFrame with loci information (with at least 'Chromosome' and 'Start_position' columns)
     :param seg_trees: dict of IntervalTrees with segment data
     :return: pandas.DataFrame with segment data appended to given df
@@ -189,4 +190,3 @@ def apply_segment_data_to_df(df, seg_trees):
     data_df = pd.DataFrame([{n: np.NaN for n in col_names} if pd.isnull(d) else d for d in data])
 
     return pd.concat([df_copy.reset_index(drop=True), data_df], axis=1)
-
