@@ -90,7 +90,7 @@ def plot_acr_static(seg_df, ax, csize,
     plt.ylabel("Allelic Copy Number")
 
 
-def plot_acr_subplots(fig_list, title, fig_names, height_per_sample=350, **kwargs):
+def plot_acr_subplots(fig_list, title, fig_names, csize, height_per_sample=350, **kwargs):
     """Add each Figure in list to plotly subplots.
 
     Additional kwargs are passed to plotly's make_subplots method.
@@ -99,16 +99,27 @@ def plot_acr_subplots(fig_list, title, fig_names, height_per_sample=350, **kwarg
     :param title: Title of plot
     :param fig_names: Title for each subplot (one for each row)
     """
-    fig = plotly.subplots.make_subplots(rows=len(fig_list), cols=1, shared_xaxes=True, subplot_titles=fig_names, **kwargs)
-    fig.update_layout(title_text=title)
+    fig = plotly.subplots.make_subplots(rows=len(fig_list), cols=1,
+                                        shared_xaxes=True, subplot_titles=fig_names,
+                                        vertical_spacing=0.15/len(fig_list), **kwargs)
 
     for i in range(len(fig_list)):
         for t in fig_list[i].data:
             fig.add_trace(t, row=i+1, col=1)
+        fig.update_yaxes(fig_list[i].layout.yaxis, row=i+1, col=1)
+
+    # Add chromosome background back in
+    add_background(fig, csize.keys(), csize)
 
     # update height based on subplot number
-    fig.update_layout(height=len(fig_list)*height_per_sample + 50)
+    fig.update_layout(height=len(fig_list)*height_per_sample + 50,
+                      title_text=title,
+                      title_font_size=26,
+                      plot_bgcolor='white')
     fig.update_xaxes(fig_list[0].layout.xaxis)
+
+    # show x-axis title on only bottom plot
+    fig.update_xaxes(title_text='', selector=(lambda x: not x['showticklabels']))
 
     return fig
 
