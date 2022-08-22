@@ -95,6 +95,8 @@ def plot_acr_subplots(fig_list, title, fig_names, csize, height_per_sample=350, 
 
     Additional kwargs are passed to plotly's make_subplots method.
 
+    :param height_per_sample: plot height for each sample plot (scales based on size of fig_list); default 350
+    :param csize: dict with chromosome sizes, as {contig_name: size}
     :param fig_list: List of plotly.graph_objects.Figure, one for each row
     :param title: Title of plot
     :param fig_names: Title for each subplot (one for each row)
