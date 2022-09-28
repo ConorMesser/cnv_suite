@@ -352,7 +352,7 @@ class CNV_Profile:
 
         x_coverage_df = x_coverage_df[x_coverage_df['chrom'].isin(self.csize.keys())]
         
-        pandarallel.initialize()
+        pandarallel.initialize(use_memory_fs=False)
         # bins in cov_collect bed file are inclusive, but end values should be exclusive to compare to intervals
         x_coverage_df['paternal_ploidy'] = x_coverage_df.parallel_apply(
             lambda x: single_allele_ploidy(self.cnv_trees[x['chrom']][0], x['start'], x['end'] + 1),
@@ -417,7 +417,7 @@ class CNV_Profile:
         
         snv_df = snv_df.merge(bed_df, on=['CHROM', 'POS'], how='inner')
         
-        pandarallel.initialize()
+        pandarallel.initialize(use_memory_fs=False)
         snv_df['paternal_ploidy'] = snv_df.parallel_apply(
             lambda x: single_allele_ploidy(self.cnv_trees[x['CHROM']][0], x['POS'], x['POS'] + 1),
             axis=1)
