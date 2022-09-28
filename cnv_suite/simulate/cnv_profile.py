@@ -379,12 +379,13 @@ class CNV_Profile:
         cov_df = self.generate_coverage(purity, cov_binned_file, x_coverage=x_coverage, sigma=sigma)
         cov_df.rename(columns={'chrom': 'chr'}).to_csv(filename, sep='\t', index=False)
 
-    def generate_snvs(self, vcf, bed, purity):
+    def generate_snvs(self, vcf, bed, purity, ref_alt=False):
         """Generate SNV read depths adjusted for CNV profile (and purity), with phasing from vcf file.
 
         :param vcf: VCF file containing SNVs and haplotype of SNVs
         :param bed: bed file containing the read depths for all desired SNVs in original bam
         :param purity: desired purity, given as float
+        :param ref_alt: True if bed file contains ref and alt counts vs. only depth counts (default False)
         """
         if self.cnv_trees is None:
             print('cnv_trees not computed yet. Run calculate_profiles() before generating snvs.')
@@ -403,7 +404,11 @@ class CNV_Profile:
                 
         snv_df = pd.read_csv(vcf, sep='\t', comment='#', header=None, 
                      names=['CHROM','POS','ID','REF','ALT','QUAL','FILTER','INFO','FORMAT','NA12878'])
-        bed_df = pd.read_csv(bed, sep='\t', header=0, names=['CHROM', 'POS', 'DEPTH'], dtype={'CHROM': str})
+        if ref_alt:
+            bed_df = pd.read_csv(bed, sep='\t', header=0, names=['CHROM', 'POS', 'REF_BED', 'ALT_BED'], dtype={'CHROM': str})
+            bed_df['DEPTH'] = bed_df['REF_BED'] + bed_df['ALT_BED']
+        else:
+            bed_df = pd.read_csv(bed, sep='\t', header=0, names=['CHROM', 'POS', 'DEPTH'], dtype={'CHROM': str})
 
         # change contigs to [0-9]+ from chr[0-9XY]+ in input files
         snv_df = switch_contigs(snv_df)
@@ -444,9 +449,9 @@ class CNV_Profile:
 
         return snv_df, correct_phase_interval_trees
 
-    def save_hets_file(self, filename, vcf, bed, purity):
+    def save_hets_file(self, filename, vcf, bed, purity, ref_alt=False):
         """Generate SNV adjusted depths for given purity for given bed file and save output to filename"""
-        vcf_df, _ = self.generate_snvs(vcf, bed, purity)
+        vcf_df, _ = self.generate_snvs(vcf, bed, purity, ref_alt=ref_alt)
         vcf_df.rename(columns={'CHROM': 'CONTIG', 'POS': 'POSITION',
                                 'ref_count': 'REF_COUNT', 'alt_count': 'ALT_COUNT'})[['CONTIG', 'POSITION',
                                                                                       'REF_COUNT', 'ALT_COUNT']].to_csv(filename, sep='\t', index=False)
