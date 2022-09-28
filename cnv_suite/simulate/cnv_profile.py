@@ -383,13 +383,7 @@ class CNV_Profile:
         """Generate coverage for given purity and binned coverage file and save output to filename"""
         cov_df = self.generate_coverage(purity, cov_binned_file, x_coverage=x_coverage, sigma=sigma)
         cov_df = cov_df.rename(columns={'chrom': 'chr'})
-        # save version with coverage details
         cov_df.to_csv(filename, sep='\t', index=False)
-        # save hapseg version
-        cov_df['chr'] = cov_df['chr'].apply(lambda x: 'chr' + str(x))
-        dic = {'chr23':'chrX', 'chr24':'chrY'}
-        cov_df['chr'] = cov_df['chr'].apply(lambda x: dic[x] if x in dic else x)
-        cov_df.iloc[:,:-2].to_csv(filename[:-3] + '_hapaseg_format.bed', sep='\t', header=None, index=False)
  
     def generate_snvs(self, vcf, bed, purity):
         """Generate SNV read depths adjusted for CNV profile (and purity), with phasing from vcf file.
@@ -463,6 +457,7 @@ class CNV_Profile:
                                 'ref_count': 'REF_COUNT', 'alt_count': 'ALT_COUNT'})[['CONTIG', 'POSITION',
                                                                                       'REF_COUNT', 'ALT_COUNT']].to_csv(filename, sep='\t', index=False)
     
+    # generates seg file using poisson variance and beta noise for sigma
     def generate_profile_seg_file(self, filename, vcf, het_depth_bed, og_coverage_bed, purity):
         snv_df, _ = self.generate_snvs(vcf, het_depth_bed, purity)
         # get allele counts from snv_df
@@ -491,12 +486,8 @@ class CNV_Profile:
             prof_df.loc[i, ['A_count', 'B_count']] = A,B
             if (A+B) == 0:
                 continue
-            #imbalance = A / (A+B)
-            #maj_imb = imbalance if imbalance > 0.5 else 1 - imbalance
             A,B = (A,B) if A >B else (B, A)
             purity_corrected_cov = (mean_allele_cov * tot_ploidy * purity) + (mean_allele_cov * (1-purity) * 2)
-            #major = purity_corrected_cov * maj_imb
-            #minor = purity_corrected_cov * (1 - maj_imb)
             major_samples = s.poisson.rvs(purity_corrected_cov * s.beta.rvs(A,B, size = 10000))
             major_mu, major_sigma = major_samples.mean(), major_samples.std()
             minor_samples = s.poisson.rvs(purity_corrected_cov * s.beta.rvs(B,A, size = 10000))
@@ -509,6 +500,7 @@ class CNV_Profile:
         #prof_df[['Chromosome', 'Start.bp', 'End.bp', 'mu.major', 'mu.minor',
         #         'sigma.major', 'sigma.minor']].to_csv(filename, sep='\t', index=False)
         prof_df.to_csv(filename, sep='\t', index=False)
+    
     def generate_phase_switching(self):
         phase_switches = {}
         for chrom, size in self.csize.items():
