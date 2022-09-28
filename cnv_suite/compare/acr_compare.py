@@ -11,7 +11,7 @@ from scipy.optimize import minimize
 STAT_COLUMNS = ['mu.minor', 'sigma.minor', 'mu.major', 'sigma.major']
 
 
-def acr_compare(file_1=None, file_2=None):
+def acr_compare(file_1=None, file_2=None, fit_params=False):
     """
     Compare the allelic copy ratio segments between the two seg files.
 
@@ -32,37 +32,43 @@ def acr_compare(file_1=None, file_2=None):
 
     # take union of segments to allocate bins
     bins = get_union(seg1, seg2)
-
-    minimization_result = minimize(overlap_min_helper, x0=np.array([1]),
+    if fit_params:
+        minimization_result = minimize(overlap_min_helper, x0=np.array([1,0.5]),
                                    args=bins, method='Powell',
-                                   bounds=[(0.00001, 25)],
+                                   bounds=[(0.00001, 2000), (0,1)],
                                    options={'xtol': 0.000001, 'ftol': 0.00001})
-    optimal_ratio = minimization_result.x[0]
-    overlap_score, maj_ov, min_ov = get_avg_overlap(optimal_ratio, bins)
+    
+        optimal_scale_factor = minimization_result.x[0]
+        optimal_purity = minimization_result.x[1]
+        params = minimization_result.x
+    else:
+        params = None
+        optimal_scale_factor, optimal_purity = 0,0
+    overlap_score, maj_ov, min_ov = get_avg_overlap(bins, params)
     bins["major_overlap"] = maj_ov
     bins["minor_overlap"] = min_ov
 
-    bins["mu.major_1"] = bins.apply(lambda x: (x["mu.major_1"] - 1) * optimal_ratio + 1, axis=1)
-    bins["mu.minor_1"] = bins.apply(lambda x: (x["mu.minor_1"] - 1) * optimal_ratio + 1, axis=1)
-    bins["sigma.major_1"] *= optimal_ratio
-    bins["sigma.minor_1"] *= optimal_ratio
+    if fit_params:
+        bins["mu.major_1"] = bins.apply(lambda x: optimal_scale_factor * (optimal_purity * (x["mu.major_1"] - 1) + 1), axis=1)
+        bins["mu.minor_1"] = bins.apply(lambda x: optimal_scale_factor * (optimal_purity * (x["mu.minor_1"] - 1) + 1), axis=1)
+        bins["sigma.major_1"] *= optimal_scale_factor
+        bins["sigma.minor_1"] *= optimal_scale_factor
 
     non_overlap_length = int(bins['length_1_unique'].sum()) + int(bins['length_2_unique'].sum())
     overlap_length = int(bins['length_overlap'].sum())
 
-    return overlap_score, optimal_ratio, non_overlap_length, overlap_length, bins
+    return overlap_score, optimal_scale_factor, optimal_purity, non_overlap_length, overlap_length, bins
 
-
-def overlap_min_helper(ratio, bins):
+def overlap_min_helper(params, bins):
     """
     Return just the inverse overlap score for optimization minimize function.
     """
-    overlap_score, _, _ = get_avg_overlap(ratio, bins)
+    overlap_score, _, _ = get_avg_overlap(bins, params)
 
     return 1 / overlap_score
 
 
-def get_avg_overlap(ratio, bins):
+def get_avg_overlap(bins, params=None):
     """
     Calculate the overlap score for the major and minor alleles and get the average.
 
@@ -74,10 +80,10 @@ def get_avg_overlap(ratio, bins):
     # can I assume allele marker (major vs. minor) is same for both inputs? todo
     major_overlap = bins.apply(lambda x: calc_overlap(x["mu.major_1"], x["sigma.major_1"],
                                                               x["mu.major_2"], x["sigma.major_2"],
-                                                              x['unique'], ratio=ratio), axis=1)
+                                                              x['unique'], params=params), axis=1)
     minor_overlap = bins.apply(lambda x: calc_overlap(x["mu.minor_1"], x["sigma.minor_1"],
                                                               x["mu.minor_2"], x["sigma.minor_2"],
-                                                              x['unique'], ratio=ratio), axis=1)
+                                                              x['unique'], params=params), axis=1)
 
     # get average overlap score
     overlap_score = np.average(np.concatenate((major_overlap, minor_overlap)),
@@ -85,7 +91,7 @@ def get_avg_overlap(ratio, bins):
     return overlap_score, major_overlap, minor_overlap
 
 
-def calc_overlap(mu1, sigma1, mu2, sigma2, unique, ratio=1):
+def calc_overlap(mu1, sigma1, mu2, sigma2, unique, params=np.array([1.,1.])):
     """
     Calculate the overlap between two normal distributions, defined by given statistics.
 
@@ -101,9 +107,11 @@ def calc_overlap(mu1, sigma1, mu2, sigma2, unique, ratio=1):
     # check if bin is non-overlapping
     if unique:
         return 0
-    
-    mu1 = (mu1 - 1) * ratio + 1
-    sigma1 *= ratio
+    if params is None:
+        params=np.array([1., 1,])
+    scale_factor, purity = params
+    mu1 = scale_factor * (purity * (mu1 - 1) + 1)
+    sigma1 *= scale_factor
 
     # check if distributions are equal
     if mu1 == mu2 and sigma1 == sigma2:

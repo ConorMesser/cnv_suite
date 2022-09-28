@@ -9,6 +9,8 @@ from random import choice, shuffle
 from natsort import natsort_keygen
 from pandarallel import pandarallel
 import pickle
+import tqdm
+import scipy.stats as s
 
 from cnv_suite.utils import switch_contigs
 from cnv_suite.utils.simulation_utils import get_alt_count, \
@@ -338,9 +340,12 @@ class CNV_Profile:
             return None
 
         x_coverage_df = pd.read_csv(cov_binned, sep='\t', names=['chrom', 'start', 'end', 'covcorr',
-                                                                 'mean_fraglen', 'sqrt_avg_fragvar', 'n_reads'],
-                                    dtype={'chrom': str, 'start': int, 'end': int, 'covcorr': int,
-                                           'mean_fraglen': int, 'sqrt_avg_fragvar': int, 'n_reads': int}, header=None)
+                                                                 'mean_fraglen', 'sqrt_avg_fragvar', 'n_frags',
+                                                                 'tot_reads', 'reads_flagged'],
+                                    low_memory=False, header=None)
+        
+        # remove mitocondrial contigs if they exist
+        x_coverage_df = x_coverage_df.loc[x_coverage_df.chrom != 'chrM'] 
         
         # change contigs to [0-9]+ from chr[0-9XY]+ in input file
         x_coverage_df = switch_contigs(x_coverage_df)
@@ -372,13 +377,20 @@ class CNV_Profile:
         x_coverage_df['covcorr_original'] = x_coverage_df['covcorr']
         x_coverage_df['covcorr'] = np.floor(x_coverage_df['covcorr'].values * x_coverage_df['ploidy'].values / 2).astype(int)
 
-        return x_coverage_df[['chrom', 'start', 'end', 'covcorr', 'mean_fraglen', 'sqrt_avg_fragvar', 'n_reads', 'ploidy', 'covcorr_original']]
+        return x_coverage_df[['chrom', 'start', 'end', 'covcorr', 'mean_fraglen', 'sqrt_avg_fragvar', 'n_frags', 'tot_reads', 'reads_flagged', 'ploidy', 'covcorr_original']]
 
     def save_coverage_file(self, filename, purity, cov_binned_file, x_coverage=None, sigma=None):
         """Generate coverage for given purity and binned coverage file and save output to filename"""
         cov_df = self.generate_coverage(purity, cov_binned_file, x_coverage=x_coverage, sigma=sigma)
-        cov_df.rename(columns={'chrom': 'chr'}).to_csv(filename, sep='\t', index=False)
-
+        cov_df = cov_df.rename(columns={'chrom': 'chr'})
+        # save version with coverage details
+        cov_df.to_csv(filename, sep='\t', index=False)
+        # save hapseg version
+        cov_df['chr'] = cov_df['chr'].apply(lambda x: 'chr' + str(x))
+        dic = {'chr23':'chrX', 'chr24':'chrY'}
+        cov_df['chr'] = cov_df['chr'].apply(lambda x: dic[x] if x in dic else x)
+        cov_df.iloc[:,:-2].to_csv(filename[:-3] + '_hapaseg_format.bed', sep='\t', header=None, index=False)
+ 
     def generate_snvs(self, vcf, bed, purity):
         """Generate SNV read depths adjusted for CNV profile (and purity), with phasing from vcf file.
 
@@ -409,7 +421,7 @@ class CNV_Profile:
         snv_df = switch_contigs(snv_df)
         bed_df = switch_contigs(bed_df)
         
-        snv_df = snv_df.merge(bed_df, on=['CHROM', 'POS'], how='right')
+        snv_df = snv_df.merge(bed_df, on=['CHROM', 'POS'], how='inner')
         
         pandarallel.initialize()
         snv_df['paternal_ploidy'] = snv_df.parallel_apply(
@@ -450,7 +462,53 @@ class CNV_Profile:
         vcf_df.rename(columns={'CHROM': 'CONTIG', 'POS': 'POSITION',
                                 'ref_count': 'REF_COUNT', 'alt_count': 'ALT_COUNT'})[['CONTIG', 'POSITION',
                                                                                       'REF_COUNT', 'ALT_COUNT']].to_csv(filename, sep='\t', index=False)
+    
+    def generate_profile_seg_file(self, filename, vcf, het_depth_bed, og_coverage_bed, purity):
+        snv_df, _ = self.generate_snvs(vcf, het_depth_bed, purity)
+        # get allele counts from snv_df
+        A_alt_mask = snv_df.NA12878.apply(lambda x: int(x[0]) ==1)
+        snv_df.loc[:, 'A_count'] = 0
+        snv_df.loc[:, 'B_count'] = 0
+        snv_df.loc[A_alt_mask, 'A_count'] = snv_df.loc[A_alt_mask, 'alt_count']
+        snv_df.loc[~A_alt_mask, 'A_count'] = snv_df.loc[~A_alt_mask, 'ref_count']
+        snv_df.loc[~A_alt_mask, 'B_count'] = snv_df.loc[~A_alt_mask, 'alt_count']
+        snv_df.loc[A_alt_mask, 'B_count'] = snv_df.loc[A_alt_mask, 'ref_count']
+        phased_counts = snv_df[['CHROM', 'POS', 'A_count', 'B_count']]
+        
+        Cov = pd.read_csv(og_coverage_bed, sep="\t", names=["chr", "start", "end", "covcorr", "mean_frag_len", "std_frag_len", "num_frags", "tot_reads", "fail_reads"], low_memory=False)
+        filt = Cov.loc[Cov.mean_frag_len > 0]
+        # filter out zero bins
+        mean_allele_cov = filt.covcorr.mean() / filt.mean_frag_len.mean() / 2
+        
+        prof_df = self.cnv_profile_df.reset_index(drop=True).rename({'mu.major': 'major_ploidy', 'mu.minor':'minor_ploidy'}, axis=1)
+        prof_df.loc[:, ['mu.major', 'mu.minor']] = np.nan
+        prof_df.loc[:, ['A_count', 'B_count']] = 0
+        prof_df.loc[:, ['sigma.major', 'sigma.minor']] = np.nan
+        for i, row in tqdm.tqdm(prof_df.iterrows()):
+            chrom, st, en, maj_ploidy, min_ploidy = row[:5]
+            tot_ploidy = maj_ploidy + min_ploidy
+            A,B = phased_counts.loc[(phased_counts.CHROM ==chrom) & (phased_counts.POS >= st) & (phased_counts.POS < en), ['A_count', 'B_count']].sum()
+            prof_df.loc[i, ['A_count', 'B_count']] = A,B
+            if (A+B) == 0:
+                continue
+            #imbalance = A / (A+B)
+            #maj_imb = imbalance if imbalance > 0.5 else 1 - imbalance
+            A,B = (A,B) if A >B else (B, A)
+            purity_corrected_cov = (mean_allele_cov * tot_ploidy * purity) + (mean_allele_cov * (1-purity) * 2)
+            #major = purity_corrected_cov * maj_imb
+            #minor = purity_corrected_cov * (1 - maj_imb)
+            major_samples = s.poisson.rvs(purity_corrected_cov * s.beta.rvs(A,B, size = 10000))
+            major_mu, major_sigma = major_samples.mean(), major_samples.std()
+            minor_samples = s.poisson.rvs(purity_corrected_cov * s.beta.rvs(B,A, size = 10000))
+            minor_mu, minor_sigma = minor_samples.mean(), minor_samples.std()
+            prof_df.at[i,['mu.major', 'sigma.major']] = major_mu, major_sigma
+            prof_df.at[i,['mu.minor', 'sigma.minor']] = minor_mu, minor_sigma
+        #prof_df.loc[:, 'sigma.minor'] = np.sqrt(prof_df.loc[:, 'mu.minor'])
+        #prof_df.loc[:, 'sigma.major'] = np.sqrt(prof_df.loc[:, 'mu.major'])
 
+        #prof_df[['Chromosome', 'Start.bp', 'End.bp', 'mu.major', 'mu.minor',
+        #         'sigma.major', 'sigma.minor']].to_csv(filename, sep='\t', index=False)
+        prof_df.to_csv(filename, sep='\t', index=False)
     def generate_phase_switching(self):
         phase_switches = {}
         for chrom, size in self.csize.items():
