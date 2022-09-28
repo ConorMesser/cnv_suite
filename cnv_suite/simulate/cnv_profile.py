@@ -339,8 +339,7 @@ class CNV_Profile:
 
         x_coverage_df = pd.read_csv(cov_binned, sep='\t', names=['chrom', 'start', 'end', 'covcorr',
                                                                  'mean_fraglen', 'sqrt_avg_fragvar', 'n_reads'],
-                                    dtype={'chrom': str, 'start': int, 'end': int, 'covcorr': int,
-                                           'mean_fraglen': int, 'sqrt_avg_fragvar': int, 'n_reads': int}, header=None)
+                                    low_memory=False, dtype={'chrom': str}, header=None)
         
         # change contigs to [0-9]+ from chr[0-9XY]+ in input file
         x_coverage_df = switch_contigs(x_coverage_df)
