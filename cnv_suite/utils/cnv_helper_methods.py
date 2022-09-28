@@ -20,6 +20,9 @@ def get_segment_interval_trees(seg_dfs, seg_cluster_df=None, cluster_colname='Cl
     if 'Sample_ID' not in seg_dfs:
         seg_dfs['Sample_ID'] = 'SAMPLE'
 
+    # remove 0 length segments (not sure how these even exist) - produce errors in IntervalTree
+    seg_dfs = seg_dfs[seg_dfs['length'] > 0]
+
     # must remove periods in columns used to create namedtuple (replace with underscores)
     essential_data_columns = {s: s.replace('.', '_') for s in
                               seg_dfs.columns.drop(['Sample_ID', 'Chromosome', 'Start.bp', 'End.bp']).values}
