@@ -87,6 +87,9 @@ def breakpoint_distance(file_control=None, file_case=None, seg_df_control=None, 
 
     seg_df_control.dropna(subset=['mu.minor', 'mu.major'], inplace=True)
     seg_df_case.dropna(subset=['mu.minor', 'mu.major'], inplace=True)
+    
+    seg_df_control = seg_df_control.reset_index(drop=True)
+    seg_df_case = seg_df_case.reset_index(drop=True)
 
     seg_df_control['start'], seg_df_control['end'] = seg_df_control['Start.bp'], seg_df_control['End.bp']
     seg_df_case['start'], seg_df_case['end'] = seg_df_case['Start.bp'], seg_df_case['End.bp']
