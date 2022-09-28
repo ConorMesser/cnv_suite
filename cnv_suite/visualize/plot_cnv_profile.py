@@ -30,7 +30,7 @@ def plot_acr_static(seg_df, ax, csize,
         y_upper_lim = 2
 
     seg_df, chr_order, chrom_start = prepare_df(seg_df, csize, suffix='.bp')
-    add_background(ax, chr_order, csize, height=7)
+    add_background(ax, chr_order, csize, height=max(7, y_upper_lim+1))
 
     # determine segment colors based on input
     if segment_colors == 'difference' or segment_colors is None:
