@@ -398,7 +398,7 @@ class CNV_Profile:
         cov_df = cov_df.rename(columns={'chrom': 'chr'})
         cov_df.to_csv(filename, sep='\t', index=False)
 
-    def generate_snvs(self, vcf, bed, purity, , ref_alt=False, do_parallel=True):
+    def generate_snvs(self, vcf, bed, purity, ref_alt=False, do_parallel=True):
         """Generate SNV read depths adjusted for CNV profile (and purity), with phasing from vcf file.
 
         :param vcf: VCF file containing SNVs and haplotype of SNVs
