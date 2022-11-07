@@ -140,11 +140,12 @@ def mu_sigma_difference(file_1=None, file_2=None, seg_df_1=None, seg_df_2=None, 
     pcm = ax.scatter(sigma_diffs, mu_diffs,
                      c=['blue']*diff_df.shape[0] + ['red']*diff_df.shape[0], alpha=0.2)
 
-    max_length = np.max(lengths)
+    max_length = np.nanmax(lengths)
     pcm.set_sizes(lengths / max_length * 100 + 3)
 
-    max_mu_diff = np.amax(np.abs(mu_diffs))
-    max_sigma_diff = np.amax(np.abs(sigma_diffs))
+    max_mu_diff = np.nanmax(np.abs(mu_diffs))
+    max_sigma_diff = np.nanmax(np.abs(sigma_diffs))
+
     if mu_lim is not None and sigma_lim is not None:
         ax.set_ylim(-mu_lim, mu_lim)
         ax.set_xlim(-sigma_lim, sigma_lim)

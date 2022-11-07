@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 try:
     from statistics import NormalDist
-except ModuleNotFoundError:
+except (ModuleNotFoundError, ImportError):
     from scipy.stats import norm as NormalDist
 from math import log
 import sys
@@ -120,7 +120,12 @@ def calc_overlap(mu1, sigma1, mu2, sigma2, unique, params=np.array([1.,1.])):
     # run builtin method in statistics.NormalDist
     # returns OVL; should I give option for Bhattacharyya? todo
     if 'statistics' in sys.modules:
-        return NormalDist(mu1, sigma1).overlap(NormalDist(mu2, sigma2))
+        try:
+            overlap = NormalDist(mu1, sigma1).overlap(NormalDist(mu2, sigma2))
+        except AttributeError:
+            pass
+        else:
+            return overlap
 
     # calculate intersection(s) of the two distributions
     x_intersect = calc_pdf_intersect(mu1, sigma1, mu2, sigma2)

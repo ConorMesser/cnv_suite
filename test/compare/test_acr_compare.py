@@ -2,7 +2,7 @@ import unittest
 import pandas as pd
 from statistics import NormalDist  # only run on version >= Python 3.8
 
-from acr_compare import calc_overlap, create_bins
+from cnv_suite.compare.acr_compare import calc_overlap, create_bins
 
 
 class CalcOverlap(unittest.TestCase):
