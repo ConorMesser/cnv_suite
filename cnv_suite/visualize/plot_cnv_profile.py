@@ -338,26 +338,38 @@ def update_cnv_scatter_sigma_toggle(fig, sigmas):
     fig.update_traces(dict(visible=sigmas), selector={'name': 'cnv_sigma'})
 
 
-def add_background(ax, chr_order, csize, height=100):
+def add_background(ax, chr_order, csize, height=100, plotly_row=None, plotly_col=None):
     """Add background alternating gray/white bars to demarcate chromosomes.
     
     :param ax: matplotlib axes or plotly.Figure
     :param chr_order: contig names in order as list
     :param csize: dict with chromosome sizes, as {contig_name: size}
     :param height: height of bars, default=100
+    :param plotly_row: 1-indexed row index to plot background
+    :param plotly_col: 1-indexed col index to plot background
     :return: None
     """
     base_start = 0
     chrom_ticks = []
     patch_color = 'white'
+
+    is_plotly_figure = isinstance(ax, go.Figure) and not ((plotly_row is None) or (plotly_col is None))
     for chrom in chr_order:
         if type(ax) == go.Figure:
-            ax.add_vrect(base_start, base_start + csize[chrom], fillcolor=patch_color,
-                          opacity=0.1, layer='below', line_width=0)
+            if is_plotly_figure:
+                ax.add_vrect(base_start, base_start + csize[chrom], fillcolor=patch_color,
+                             opacity=0.1, layer='below', line_width=0, row=plotly_row, col=plotly_col)
+            else:
+                ax.add_vrect(base_start, base_start + csize[chrom], fillcolor=patch_color,
+                              opacity=0.1, layer='below', line_width=0)
         else:
             p = patches.Rectangle((base_start, -0.2), csize[chrom], height, fill=True, facecolor=patch_color,
                                   edgecolor=None, alpha=.1)  # Background
-            ax.add_patch(p)
+
+            if is_plotly_figure:
+                ax.add_patch(p, row=plotly_row, col=plotly_col)
+            else:
+                ax.add_patch(p)
         patch_color = 'gray' if patch_color == 'white' else 'white'
         chrom_ticks.append(base_start + csize[chrom] / 2)
         base_start += csize[chrom]

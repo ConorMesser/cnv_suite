@@ -36,7 +36,8 @@ setup(
         'natsort>=8.1.0, <10',
         'pandarallel>=1.5.5, <1.8',
         'tqdm>=4.45',
-        'kaleido>=0.2.1, <0.3'
+        'kaleido>=0.2.1, <0.3',
+        'nbformat>=4.2.0'
     ],
     classifiers=[
         "Development Status :: 4 - Beta",
