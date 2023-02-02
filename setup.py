@@ -12,7 +12,7 @@ long_description = (this_directory / "README.md").read_text()
 
 setup(
     name='cnv_suite',
-    version="0.1.0",
+    version="0.1.1",
     packages=['cnv_suite.compare', 'cnv_suite.simulate', 'cnv_suite.utils', 'cnv_suite.visualize', 'cnv_suite'],
     entry_points={
         'console_scripts': [
