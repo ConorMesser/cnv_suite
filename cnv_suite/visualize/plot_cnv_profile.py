@@ -105,9 +105,8 @@ def plot_acr_subplots(fig_list, title, fig_names, csize, height_per_sample=350, 
                                         shared_xaxes=True, subplot_titles=fig_names,
                                         vertical_spacing=0.15/len(fig_list), **kwargs)
 
-    for i in range(len(fig_list)):
-        for t in fig_list[i].data:
-            fig.add_trace(t, row=i+1, col=1)
+    for i, sub_figure in enumerate(fig_list):
+        fig.add_traces(sub_figure.data, rows=i + 1, cols=1)
         fig.update_yaxes(fig_list[i].layout.yaxis, row=i+1, col=1)
 
     # Add chromosome background back in
@@ -357,11 +356,11 @@ def add_background(ax, chr_order, csize, height=100, plotly_row=None, plotly_col
     for chrom in chr_order:
         if type(ax) == go.Figure:
             if is_plotly_figure:
-                ax.add_vrect(base_start, base_start + csize[chrom], fillcolor=patch_color,
-                             opacity=0.1, layer='below', line_width=0, row=plotly_row, col=plotly_col)
+                ax.add_shape(x0=base_start, x1=base_start + csize[chrom], y0=0, y1=1, fillcolor=patch_color,
+                             opacity=0.1, layer='below', line_width=0, yref= 'y domain', row=plotly_row, col=plotly_col)
             else:
-                ax.add_vrect(base_start, base_start + csize[chrom], fillcolor=patch_color,
-                              opacity=0.1, layer='below', line_width=0)
+                ax.add_shape(x0=base_start, x1=base_start + csize[chrom], y0=0, y1=1, fillcolor=patch_color,
+                             opacity=0.1, layer='below', line_width=0, yref= 'y domain')
         else:
             p = patches.Rectangle((base_start, -0.2), csize[chrom], height, fill=True, facecolor=patch_color,
                                   edgecolor=None, alpha=.1)  # Background
