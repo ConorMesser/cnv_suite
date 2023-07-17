@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # method name
-METHOD_NAME=CNV_Suite
+METHOD_NAME=cnv_suite
 
 # docker build parameters (most likely, the defaults are OK)
 EXTRA_DOCKER_BUILD_ARGS=""

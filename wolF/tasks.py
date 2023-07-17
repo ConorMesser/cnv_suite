@@ -16,7 +16,7 @@ class SimulateProfile(wolf.Task):
     """
     output_patterns = {"coverage": "simulated_coverage.txt",
                        "hets": "simulated_hets.txt"}
-    docker = "gcr.io/broad-getzlab-workflows/CNV_Suite:v0.0.1"
+    docker = "gcr.io/broad-getzlab-workflows/cnv_suite:main_v76"
 
 
 class CallDepth(wolf.Task):

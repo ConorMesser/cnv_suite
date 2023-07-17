@@ -71,7 +71,7 @@ def switch_contigs(input_data):
 
         input_data[column_label] = input_data[column_label].apply(
             lambda x: re.search('(?<=chr)[\dXY]+|^[\dXY]+', x).group())
-        input_data.replace(to_replace={column_label: {'X': '23', 'Y': '24'}}, value=None, inplace=True)
+        input_data.replace(to_replace={column_label: {'X': '23', 'Y': '24'}},  inplace=True)
         # should already be sorted
         # input_data.sort_values([column_label, 'start'], key=natsort.natsort_keygen(), inplace=True)
         return input_data

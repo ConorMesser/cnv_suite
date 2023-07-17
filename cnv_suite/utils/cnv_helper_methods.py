@@ -20,6 +20,9 @@ def get_segment_interval_trees(seg_dfs, seg_cluster_df=None, cluster_colname='Cl
     if 'Sample_ID' not in seg_dfs:
         seg_dfs['Sample_ID'] = 'SAMPLE'
 
+    # remove 0 length segments (not sure how these even exist) - produce errors in IntervalTree
+    seg_dfs = seg_dfs[seg_dfs['length'] > 0]
+
     # must remove periods in columns used to create namedtuple (replace with underscores)
     essential_data_columns = {s: s.replace('.', '_') for s in
                               seg_dfs.columns.drop(['Sample_ID', 'Chromosome', 'Start.bp', 'End.bp']).values}
@@ -71,15 +74,14 @@ def get_segment_interval_trees(seg_dfs, seg_cluster_df=None, cluster_colname='Cl
     return contig_trees
 
 
-def calc_absolute_cn(mu_minor, mu_major, sigma_minor, sigma_major, c0, cn_diff, zero_min=True):
+def calc_absolute_cn(mu_minor, mu_major, sigma, c0, cn_diff, zero_min=True):
     """Calculate ABSOLUTE Copy Number values, given the c0 value and difference between CN 0 and 1.
 
     Note: Values should be given as numpy arrays to use as vectorized function. However, applying on floats will give correct results as well.
 
     :param mu_minor: mu minor value(s) as array or float
     :param mu_major: mu major value(s) as array or float
-    :param sigma_minor: sigma minor value(s) as array or float
-    :param sigma_major: sigma major value(s) as array or float
+    :param sigma: sigma minor value(s) as array or float
     :param c0: Value of Copy Number 0, i.e. copy number ratio for clonally deleted loci
     :param cn_diff: Difference between CN 1 and CN 0, i.e. CN ratio corresponding to haploid gain/loss
     :param zero_min: boolean whether to replace negative CN values with 0; default True
@@ -87,14 +89,13 @@ def calc_absolute_cn(mu_minor, mu_major, sigma_minor, sigma_major, c0, cn_diff, 
     """
     abs_mu_minor = (mu_minor - c0) / cn_diff
     abs_mu_major = (mu_major - c0) / cn_diff
-    abs_sig_minor = sigma_minor / cn_diff
-    abs_sig_major = sigma_major / cn_diff
+    abs_sigma = sigma / cn_diff
 
-    if zero_min:
+    if zero_min:  # todo what about sigma?
         abs_mu_minor = np.where(abs_mu_minor < 0, 0, abs_mu_minor)
         abs_mu_major = np.where(abs_mu_major < 0, 0, abs_mu_major)
 
-    return abs_mu_minor, abs_mu_major, abs_sig_minor, abs_sig_major
+    return abs_mu_minor, abs_mu_major, abs_sigma
 
 
 def calc_cn_levels(purity, ploidy, avg_cn=1):
@@ -138,7 +139,7 @@ def calc_avg_cn(seg_df,
 
 def return_seg_data_at_loci(seg_trees, sample, contig, pos):
     """Access segment data at given loci, handling missing data.
-    
+
     If segment doesn't exist at loci or sample doesn't have data at loci, returns None
 
     :param seg_trees: dict of IntervalTrees with segment data
@@ -146,19 +147,27 @@ def return_seg_data_at_loci(seg_trees, sample, contig, pos):
     :param contig: chromosome
     :param pos: loci position
     :return: dict with data (or None if segment doesn't exist)
+
+    :raise: ValueError if contig is not int or castable to int. NO X/Y chromosomes!
     """
-    # todo make sure contig is int
     try:
-        data = seg_trees[contig - 1][pos].pop().data[sample]  # only one hit, because of split_overlaps
-    except IndexError or KeyError:  # no segment at given loci
-        return None
-    finally:
-        return data._to_dict()
+        contig = int(contig)
+    except ValueError as e:
+        raise ValueError('Contig must be an int (or castable to int). Consider using switch_contigs if contigs include X/Y') from e
+    else:
+        if contig <= len(seg_trees):
+            segment = seg_trees[contig - 1][pos]
+            if len(segment) == 0:  # no segment present for any sample
+                return None
+            data = segment.pop().data  # only one segment should be in tree (after split and merge overlaps)
+            if sample not in data.keys():  # no segment present for this sample
+                return None
+            return data[sample]._asdict()
 
 
 def apply_segment_data_to_df(df, seg_trees):
     """Annotate dataframe with segment data
-    
+
     :param df: pandas.DataFrame with loci information (with at least 'Chromosome' and 'Start_position' columns)
     :param seg_trees: dict of IntervalTrees with segment data
     :return: pandas.DataFrame with segment data appended to given df
@@ -183,5 +192,4 @@ def apply_segment_data_to_df(df, seg_trees):
     # turn into df
     data_df = pd.DataFrame([{n: np.NaN for n in col_names} if pd.isnull(d) else d for d in data])
 
-    return pd.concat([df_copy, data_df], axis=0)
-
+    return pd.concat([df_copy.reset_index(drop=True), data_df], axis=1)
