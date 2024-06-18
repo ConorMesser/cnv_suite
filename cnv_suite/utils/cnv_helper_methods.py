@@ -190,6 +190,6 @@ def apply_segment_data_to_df(df, seg_trees):
 
     # make dict of NaN's using those columns
     # turn into df
-    data_df = pd.DataFrame([{n: np.NaN for n in col_names} if pd.isnull(d) else d for d in data])
+    data_df = pd.DataFrame([{n: np.nan for n in col_names} if pd.isnull(d) else d for d in data])
 
     return pd.concat([df_copy.reset_index(drop=True), data_df], axis=1)
