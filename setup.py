@@ -28,10 +28,10 @@ setup(
     long_description_content_type = 'text/markdown',
     install_requires=[
         'pandas',
-        'numpy>=1.16',
+        'numpy>=1.16.0',
         'scipy',
-        'matplotlib>=3.1',
-        'plotly>=5.12, <6',  # unknown if there will be breaking changes in a future major version of plotly
+        'matplotlib>=3.1.0',
+        'plotly>=5.12.0, <6.0.0',  # unknown if there will be breaking changes in a future major version of plotly
         'intervaltree',
         'natsort',
         'pandarallel',
