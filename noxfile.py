@@ -11,8 +11,8 @@ def test(session):
     session.run("python", "-m", "unittest")
 
 
-@nox.session()
-@nox.parametrize("numpy", ["1.14", "2.0"])
+@nox.session
+@nox.parametrize("python,numpy", [("3.7", "1.16"), ("3.9", "1.20"), ("3.10", "2.0")])
 def numpy(session, numpy):
     session.install(f"numpy=={numpy}")
     session.install(".")
@@ -20,8 +20,8 @@ def numpy(session, numpy):
     session.run("python", "-m", "unittest")
 
 
-@nox.session()
-@nox.parametrize("plotly", ["5.0", "5.22"])
+@nox.session
+@nox.parametrize("python,plotly", [("3.7", "5.12"), ("3.9", "5.17"),  ("3.10", "5.22")])  # 5.0 does not work with newer (>1.23) numpy due to np.bool deprecation
 def plotly(session, plotly):
     session.install(f"plotly=={plotly}")
     session.install(".")
@@ -29,8 +29,8 @@ def plotly(session, plotly):
     session.run("python", "-m", "unittest")
 
 
-@nox.session()
-@nox.parametrize("matplotlib", ["3.0", "3.9"])
+@nox.session
+@nox.parametrize("python,matplotlib", [("3.7", "3.1"), ("3.8", "3.3"), ("3.10", "3.9")])
 def matplotlib(session, matplotlib):
     session.install(f"matplotlib=={matplotlib}")
     session.install(".")

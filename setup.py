@@ -12,7 +12,7 @@ long_description = (this_directory / "README.md").read_text()
 
 setup(
     name='cnv_suite',
-    version="0.1.2",
+    version="0.2.0",
     packages=['cnv_suite.compare', 'cnv_suite.simulate', 'cnv_suite.utils', 'cnv_suite.visualize', 'cnv_suite'],
     entry_points={
         'console_scripts': [
@@ -27,17 +27,17 @@ setup(
     long_description = long_description,
     long_description_content_type = 'text/markdown',
     install_requires=[
-        'pandas>=1.1.3',
-        'numpy>=1.19.0',
-        'scipy>=1.5.3',
-        'matplotlib>=3.3.2',
-        'plotly>=5.6.0, <6',  # unknown if there will be breaking changes in a future major version of plotly
-        'intervaltree>=3.1.0',
-        'natsort>=8.1.0',
-        'pandarallel>=1.5.5',
-        'tqdm>=4.45',
-        'kaleido>=0.2.1',
-        'nbformat>=4.2.0'
+        'pandas',
+        'numpy>=1.16',
+        'scipy',
+        'matplotlib>=3.1',
+        'plotly>=5.12, <6',  # unknown if there will be breaking changes in a future major version of plotly
+        'intervaltree',
+        'natsort',
+        'pandarallel',
+        'tqdm',
+        'kaleido',
+        'nbformat',
     ],
     classifiers=[
         "Development Status :: 4 - Beta",

@@ -1,9 +1,5 @@
 import unittest
 import pandas as pd
-try:
-    from statistics import NormalDist  # only available on version >= Python 3.8
-except (ModuleNotFoundError, ImportError):
-    from scipy.stats import norm as NormalDist
 
 from cnv_suite.compare.acr_compare import calc_overlap, create_bins
 
@@ -21,9 +17,10 @@ class CalcOverlap(unittest.TestCase):
         self.assertEqual(calc_overlap(10, 0.0001, 20, 0.0001, False), 0)
 
     def test_exact(self):
-        self.assertAlmostEqual(calc_overlap(5, 1, 10, 1, False), NormalDist(10, 1).cdf(7.5) * 2)
+        # NormalDist(10, 1).cdf(7.5) * 2
+        self.assertAlmostEqual(calc_overlap(5, 1, 10, 1, False), 0.012419330651552318)
         self.assertAlmostEqual(calc_overlap(5, 0.25, 5.1, 0.2, False),
-                               NormalDist(5, 0.25).overlap(NormalDist(5.1, 0.2)))
+                               0.8035050657330209)  # calculated by: NormalDist(5, 0.25).overlap(NormalDist(5.1, 0.2))
 
     def test_order(self):
         self.assertEqual(calc_overlap(10, 0.5, 11, 0.4, False), calc_overlap(11, 0.4, 10, 0.5, False))
