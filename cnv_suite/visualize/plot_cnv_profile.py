@@ -109,8 +109,8 @@ def plot_acr_subplots(fig_list, title, fig_names, csize, height_per_sample=350, 
         fig.add_traces(sub_figure.data, rows=i + 1, cols=1)
         fig.update_yaxes(fig_list[i].layout.yaxis, row=i+1, col=1)
 
-    # Add chromosome background back in
-    add_background(fig, csize.keys(), csize)
+        # Add chromosome background back in
+        add_background(fig, csize.keys(), csize, plotly_row=i+1, plotly_col=1)
 
     # update height based on subplot number
     fig.update_layout(height=len(fig_list)*height_per_sample + 50,
@@ -213,10 +213,10 @@ def make_cnv_scatter(series, fig, lw=0.015, sigmas=False):
     mu_min = series['mu_minor']
     sigma = series['sigma_major'] if sigmas else 0
     length = end - start
-    n_probes = series['n_probes'] if 'n_probes' in series else np.NaN
+    n_probes = series['n_probes'] if 'n_probes' in series else np.nan
     color_maj = '#E6393F'  # red
     color_min = '#2C38A8'  # blue
-    cluster = series['cluster_assignment'] if 'cluster_assignment' in series else np.NaN
+    cluster = series['cluster_assignment'] if 'cluster_assignment' in series else np.nan
 
     fig.add_trace(go.Scatter(x=[start, start, end, end],
                   y=[mu_min + sigma, mu_min - sigma, mu_min - sigma, mu_min + sigma],
@@ -286,7 +286,7 @@ def update_cnv_color_absolute(fig, seg_df, absolute, color, start_trace, end_tra
     update_cnv_scatter_color(fig, minor_color, major_color, start_trace, end_trace)
 
 
-def update_cnv_scatter_cn(fig, major, minor, sigma, start_trace, end_trace, lw=0.015):
+def update_cnv_scatter_cn(fig, major, minor, sigma, start_trace, end_trace, lw=None):
     """Updates y values for CNV traces from start_trace to end_trace given by major/minor lists (optionally change line width also).
 
     Critical that original traces were added in order: minor (sigma), major (sigma), minor, major as performed in make_cnv_scatter method
@@ -300,6 +300,11 @@ def update_cnv_scatter_cn(fig, major, minor, sigma, start_trace, end_trace, lw=0
     :return: None
     """
     assert end_trace - start_trace == len(major) * 4 and len(major) == len(minor) == len(sigma)
+
+    if lw is None:
+        # get lw from previous major allele line width
+        trace_y = fig.data[start_trace+3]['y']
+        lw = (trace_y[0] - trace_y[1]) / 2
 
     for i, (minor_val, major_val, sigma) in enumerate(zip(minor, major, sigma)):
         fig.data[start_trace + 4 * i]['y'] = [minor_val + sigma, minor_val - sigma, minor_val - sigma, minor_val + sigma]
